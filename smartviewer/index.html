@@ -150,6 +150,13 @@
       transform: translateY(0);
     }
 
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.42;
+      transform: none;
+      box-shadow: none;
+    }
+
     .control-button {
       padding: 0 12px;
     }
@@ -385,8 +392,8 @@
     <div id="pageInfo">Seite - / -</div>
 
     <div id="controls">
-      <button class="control-button" type="button" onclick="prevPage()">&larr; <span class="control-label">Zurück</span></button>
-      <button class="control-button" type="button" onclick="nextPage()"><span class="control-label">Weiter</span> &rarr;</button>
+      <button id="prevButton" class="control-button" type="button" onclick="prevPage()">&larr; <span class="control-label">Zurück</span></button>
+      <button id="nextButton" class="control-button" type="button" onclick="nextPage()"><span class="control-label">Weiter</span> &rarr;</button>
       <button class="icon-button" type="button" title="Zoom kleiner" onclick="zoomOut()">-</button>
       <button class="icon-button" type="button" title="Zoom größer" onclick="zoomIn()">+</button>
       <button class="control-button secondary-button" type="button" onclick="resetZoom()">Reset</button>
@@ -428,6 +435,8 @@
   const catalogTitleEl = document.getElementById("catalogTitle");
   const logoWrapEl = document.getElementById("logoWrap");
   const logoEl = document.getElementById("logo");
+  const prevButtonEl = document.getElementById("prevButton");
+  const nextButtonEl = document.getElementById("nextButton");
   const introEl = document.getElementById("intro");
   const introTitleEl = document.getElementById("introTitle");
   const introTextEl = document.getElementById("introText");
@@ -446,6 +455,7 @@
   let dragStartY = 0;
   let startPanX = 0;
   let startPanY = 0;
+  let gestureStartTime = 0;
   let suppressFlipUntil = 0;
   let touchStartDistance = 0;
   let touchStartZoom = 1;
@@ -508,6 +518,7 @@
     if (!pageFlip) return;
     const current = pageFlip.getCurrentPageIndex() + 1;
     pageInfoEl.innerText = `Seite ${current} / ${totalPages}`;
+    updateNavigationState();
   }
 
   function nextPage() {
@@ -527,22 +538,58 @@
     if (isZoomed()) {
       suppressFlipUntil = Date.now() + 350;
     }
+    updateNavigationState();
+  }
+
+  function updateNavigationState() {
+    const disabled = isZoomed() || isPinching;
+    prevButtonEl.disabled = disabled;
+    nextButtonEl.disabled = disabled;
+    prevButtonEl.title = disabled ? "Zum Blättern zuerst Zoom zurücksetzen" : "Vorherige Seite";
+    nextButtonEl.title = disabled ? "Zum Blättern zuerst Zoom zurücksetzen" : "Nächste Seite";
+  }
+
+  function getViewerPoint(clientX, clientY) {
+    const rect = viewerEl.getBoundingClientRect();
+    return {
+      x: clientX - rect.left - rect.width / 2,
+      y: clientY - rect.top - rect.height / 2
+    };
+  }
+
+  function setZoomAt(nextZoom, clientX, clientY) {
+    const clampedZoom = Math.min(Math.max(nextZoom, 0.7), 2.8);
+    const point = getViewerPoint(clientX, clientY);
+    const contentX = (point.x - panX) / zoomLevel;
+    const contentY = (point.y - panY) / zoomLevel;
+
+    zoomLevel = clampedZoom;
+    panX = point.x - contentX * zoomLevel;
+    panY = point.y - contentY * zoomLevel;
+
+    if (!isZoomed()) {
+      panX = 0;
+      panY = 0;
+    }
+
+    applyZoom();
   }
 
   function applyZoom() {
+    zoomWrap.style.transformOrigin = "center center";
     zoomWrap.style.transform =
       `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
     updateZoomMode();
   }
 
   function zoomIn() {
-    zoomLevel = Math.min(zoomLevel + 0.15, 2.5);
-    applyZoom();
+    const rect = viewerEl.getBoundingClientRect();
+    setZoomAt(zoomLevel + 0.15, rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
   function zoomOut() {
-    zoomLevel = Math.max(zoomLevel - 0.15, 0.7);
-    applyZoom();
+    const rect = viewerEl.getBoundingClientRect();
+    setZoomAt(zoomLevel - 0.15, rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
   function resetZoom() {
@@ -568,17 +615,25 @@
     dragStartY = clientY;
     startPanX = panX;
     startPanY = panY;
+    gestureStartTime = Date.now();
   }
 
   function moveDrag(clientX, clientY, event) {
     if (!isPointerDown) return;
-    if (!isZoomed()) return;
 
     const deltaX = clientX - dragStartX;
     const deltaY = clientY - dragStartY;
+    const horizontalGesture = Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
 
     if (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6) {
       isDragging = true;
+    }
+
+    if (!isZoomed()) {
+      if (horizontalGesture && isDragging) {
+        event?.preventDefault();
+      }
+      return;
     }
 
     if (isDragging) {
@@ -591,9 +646,31 @@
     }
   }
 
-  function endDrag() {
+  function endDrag(clientX = dragStartX, clientY = dragStartY) {
+    const wasPointerDown = isPointerDown;
+    const wasDragging = isDragging;
+    const deltaX = clientX - dragStartX;
+    const deltaY = clientY - dragStartY;
+    const gestureTime = Date.now() - gestureStartTime;
+
     isPointerDown = false;
     viewerEl.classList.remove("dragging");
+
+    if (wasPointerDown && !isZoomed() && wasDragging && Date.now() > suppressFlipUntil) {
+      const minSwipeDistance = Math.min(120, Math.max(52, viewerEl.clientWidth * 0.10));
+      const isHorizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
+      const isIntentionalGesture = gestureTime < 1200 || Math.abs(deltaX) > minSwipeDistance * 1.7;
+
+      if (isHorizontalSwipe && isIntentionalGesture) {
+        suppressFlipUntil = Date.now() + 450;
+        if (deltaX < 0) {
+          pageFlip?.flipNext();
+        } else {
+          pageFlip?.flipPrev();
+        }
+      }
+    }
+
     window.setTimeout(() => {
       isDragging = false;
     }, 120);
@@ -624,6 +701,7 @@
     touchStartPanX = panX;
     touchStartPanY = panY;
     suppressFlipUntil = Date.now() + 500;
+    updateNavigationState();
   }
 
   function movePinch(touches, event) {
@@ -633,10 +711,19 @@
     const distance = getTouchDistance(touches);
     const nextZoom = Math.min(Math.max(touchStartZoom * (distance / touchStartDistance), 0.7), 2.8);
     const zoomRatio = nextZoom / touchStartZoom;
+    const startPoint = getViewerPoint(touchStartCenterX, touchStartCenterY);
+    const currentPoint = getViewerPoint(center.x, center.y);
+    const contentX = (startPoint.x - touchStartPanX) / touchStartZoom;
+    const contentY = (startPoint.y - touchStartPanY) / touchStartZoom;
 
     zoomLevel = nextZoom;
-    panX = touchStartPanX + (center.x - touchStartCenterX) * 0.9;
-    panY = touchStartPanY + (center.y - touchStartCenterY) * 0.9;
+    panX = currentPoint.x - contentX * zoomLevel;
+    panY = currentPoint.y - contentY * zoomLevel;
+
+    if (!isZoomed()) {
+      panX = 0;
+      panY = 0;
+    }
 
     if (Math.abs(zoomRatio - 1) > 0.015) {
       suppressFlipUntil = Date.now() + 500;
@@ -651,21 +738,14 @@
 
     isPinching = false;
     suppressFlipUntil = Date.now() + 500;
+    updateNavigationState();
   }
 
   viewerEl.addEventListener("wheel", (event) => {
     event.preventDefault();
 
-    const rect = zoomWrap.getBoundingClientRect();
-    const originX = event.clientX - rect.left;
-    const originY = event.clientY - rect.top;
-
-    zoomWrap.style.transformOrigin = `${originX}px ${originY}px`;
-
     const direction = event.deltaY < 0 ? 1 : -1;
-    zoomLevel = Math.min(Math.max(zoomLevel + direction * 0.1, 0.7), 2.5);
-
-    applyZoom();
+    setZoomAt(zoomLevel + direction * 0.1, event.clientX, event.clientY);
   }, { passive: false });
 
   viewerEl.addEventListener("pointerdown", (event) => {
@@ -680,8 +760,11 @@
     moveDrag(event.clientX, event.clientY, event);
   });
 
-  viewerEl.addEventListener("pointerup", endDrag);
-  viewerEl.addEventListener("pointercancel", endDrag);
+  viewerEl.addEventListener("pointerup", (event) => {
+    if (event.pointerType === "touch") return;
+    endDrag(event.clientX, event.clientY);
+  });
+  viewerEl.addEventListener("pointercancel", () => endDrag());
 
   viewerEl.addEventListener("touchstart", (event) => {
     if (event.touches.length === 2) {
@@ -690,9 +773,9 @@
       return;
     }
 
-    if (event.touches.length === 1 && isZoomed()) {
+    if (event.touches.length === 1) {
       beginDrag(event.touches[0].clientX, event.touches[0].clientY);
-      suppressFlipUntil = Date.now() + 350;
+      if (isZoomed()) suppressFlipUntil = Date.now() + 350;
     }
   }, { passive: false });
 
@@ -702,14 +785,20 @@
       return;
     }
 
-    if (event.touches.length === 1 && isZoomed()) {
+    if (event.touches.length === 1) {
       moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
     }
   }, { passive: false });
 
   viewerEl.addEventListener("touchend", (event) => {
     if (event.touches.length < 2) endPinch();
-    if (event.touches.length === 0) endDrag();
+    if (event.touches.length === 1 && isZoomed()) {
+      beginDrag(event.touches[0].clientX, event.touches[0].clientY);
+    }
+    if (event.touches.length === 0) {
+      const changedTouch = event.changedTouches[0];
+      endDrag(changedTouch?.clientX, changedTouch?.clientY);
+    }
   }, { passive: false });
 
   ["pointerdown", "mousedown", "touchstart", "click"].forEach((eventName) => {
@@ -840,10 +929,14 @@
         showCover: false,
         usePortrait: size.isMobile,
         mobileScrollSupport: false,
+        useMouseEvents: false,
+        clickEventForward: false,
+        swipeDistance: 9999,
         flippingTime: 650,
         drawShadow: true,
         maxShadowOpacity: 0.35,
-        disableFlipByClick: false
+        showPageCorners: false,
+        disableFlipByClick: true
       });
 
       pageFlip.loadFromHTML(pageElements);
