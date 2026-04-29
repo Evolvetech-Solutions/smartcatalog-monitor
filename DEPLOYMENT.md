@@ -101,5 +101,6 @@ Die App bedient zwei offizielle Anzeigewege:
 - Blaetterkatalog: `/smartviewer/index.html?catalog=...`
 
 Die PDF-Ansicht wird vom eigenen `pdf-viewer/` bedient und nutzt `pdfjs-dist` aus `node_modules`. Deshalb ist `npm install` beim Deployment wichtig.
+`pdfjs-dist` bleibt bewusst auf der 4er-Version, damit der Viewer stabil bleibt und keine PDF.js-5-Breaking-Changes ins Produkt kommen.
 
 Der alte manuell hochgeladene VPS-Ordner `/root/smartcatalog-monitor/viewer` wird fuer den neuen PDF-Viewer nicht mehr als Quelle gebraucht. Er kann nach erfolgreichem Live-Test separat archiviert werden.
