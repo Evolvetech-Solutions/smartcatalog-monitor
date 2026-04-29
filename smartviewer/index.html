@@ -209,6 +209,23 @@
       pointer-events: none;
     }
 
+    #panLayer {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      display: none;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #viewer.zoomed #panLayer {
+      display: block;
+    }
+
+    #viewer.dragging #panLayer {
+      cursor: grabbing;
+    }
+
     .page {
       display: flex;
       align-items: center;
@@ -406,6 +423,7 @@
     <div id="zoomWrap">
       <div id="book"></div>
     </div>
+    <div id="panLayer" aria-hidden="true"></div>
   </main>
 
   <div id="intro">
@@ -429,6 +447,7 @@
   const viewerEl = document.getElementById("viewer");
   const zoomWrap = document.getElementById("zoomWrap");
   const bookEl = document.getElementById("book");
+  const panLayerEl = document.getElementById("panLayer");
   const statusEl = document.getElementById("status");
   const pageInfoEl = document.getElementById("pageInfo");
   const customerNameEl = document.getElementById("customerName");
@@ -526,14 +545,24 @@
   }
 
   function nextPage() {
-    if (!pageFlip || isDragging || Date.now() < suppressFlipUntil) return;
-    if (isZoomed()) resetZoom();
+    if (!pageFlip || isDragging) return;
+    if (isZoomed()) {
+      resetZoom();
+      pageFlip.flipNext();
+      return;
+    }
+    if (Date.now() < suppressFlipUntil) return;
     pageFlip.flipNext();
   }
 
   function prevPage() {
-    if (!pageFlip || isDragging || Date.now() < suppressFlipUntil) return;
-    if (isZoomed()) resetZoom();
+    if (!pageFlip || isDragging) return;
+    if (isZoomed()) {
+      resetZoom();
+      pageFlip.flipPrev();
+      return;
+    }
+    if (Date.now() < suppressFlipUntil) return;
     pageFlip.flipPrev();
   }
 
@@ -804,25 +833,56 @@
     setZoomAt(zoomLevel + direction * 0.1, event.clientX, event.clientY);
   }, { passive: false });
 
-  viewerEl.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "touch") return;
+  viewerEl.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 2) return;
+
+    beginPinch(event.touches);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { passive: false, capture: true });
+
+  viewerEl.addEventListener("touchmove", (event) => {
+    if (!isPinching || event.touches.length !== 2) return;
+
+    movePinch(event.touches, event);
+    event.stopImmediatePropagation();
+  }, { passive: false, capture: true });
+
+  viewerEl.addEventListener("touchend", (event) => {
+    if (!isPinching) return;
+
+    if (event.touches.length < 2) {
+      endPinch();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, { passive: false, capture: true });
+
+  panLayerEl.addEventListener("pointerdown", (event) => {
+    if (!isZoomed()) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    viewerEl.setPointerCapture?.(event.pointerId);
+
+    panLayerEl.setPointerCapture?.(event.pointerId);
     beginDrag(event.clientX, event.clientY);
+    event.preventDefault();
   });
 
-  viewerEl.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "touch") return;
+  panLayerEl.addEventListener("pointermove", (event) => {
+    if (!isZoomed()) return;
     moveDrag(event.clientX, event.clientY, event);
   });
 
-  viewerEl.addEventListener("pointerup", (event) => {
-    if (event.pointerType === "touch") return;
-    endDrag(event.clientX, event.clientY);
+  panLayerEl.addEventListener("pointerup", (event) => {
+    endDrag(event.clientX, event.clientY, false);
   });
-  viewerEl.addEventListener("pointercancel", () => endDrag());
 
-  viewerEl.addEventListener("touchstart", (event) => {
+  panLayerEl.addEventListener("pointercancel", () => {
+    endDrag(dragStartX, dragStartY, false);
+  });
+
+  panLayerEl.addEventListener("touchstart", (event) => {
+    if (!isZoomed()) return;
+
     if (event.touches.length === 2) {
       beginPinch(event.touches);
       event.preventDefault();
@@ -830,55 +890,31 @@
     }
 
     if (event.touches.length === 1) {
-      beginTouchSwipe(event.touches[0]);
       beginDrag(event.touches[0].clientX, event.touches[0].clientY);
-      if (isZoomed()) suppressFlipUntil = Date.now() + 350;
+      event.preventDefault();
     }
-  }, { passive: false, capture: true });
+  }, { passive: false });
 
-  viewerEl.addEventListener("touchmove", (event) => {
+  panLayerEl.addEventListener("touchmove", (event) => {
+    if (!isZoomed() && !isPinching) return;
+
     if (event.touches.length === 2) {
       movePinch(event.touches, event);
       return;
     }
 
     if (event.touches.length === 1) {
-      updateTouchSwipe(event.touches[0], event);
       moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
     }
-  }, { passive: false, capture: true });
+  }, { passive: false });
 
-  viewerEl.addEventListener("touchend", (event) => {
-    const wasPinching = isPinching;
+  panLayerEl.addEventListener("touchend", (event) => {
     if (event.touches.length < 2) endPinch();
-    if (event.touches.length === 1 && isZoomed()) {
-      touchSwipeActive = false;
-      beginDrag(event.touches[0].clientX, event.touches[0].clientY);
-    }
     if (event.touches.length === 0) {
       const changedTouch = event.changedTouches[0];
-      if (!wasPinching) {
-        finishTouchSwipe(changedTouch);
-      } else {
-        touchSwipeActive = false;
-      }
       endDrag(changedTouch?.clientX, changedTouch?.clientY, false);
     }
-  }, { passive: false, capture: true });
-
-  viewerEl.addEventListener("click", (event) => {
-    if (isZoomed() || isDragging || Date.now() < suppressFlipUntil) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, true);
-
-  bookEl.addEventListener("click", (event) => {
-    if (isZoomed() || isDragging || Date.now() < suppressFlipUntil) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-  }, true);
+  }, { passive: false });
 
   async function imageExists(url) {
     try {
@@ -985,9 +1021,9 @@
         showCover: false,
         usePortrait: size.isMobile,
         mobileScrollSupport: false,
-        useMouseEvents: false,
-        clickEventForward: false,
-        swipeDistance: 9999,
+        useMouseEvents: true,
+        clickEventForward: true,
+        swipeDistance: 30,
         flippingTime: 650,
         drawShadow: true,
         maxShadowOpacity: 0.35,
