@@ -442,6 +442,14 @@
   let dragStartY = 0;
   let startPanX = 0;
   let startPanY = 0;
+  let suppressFlipUntil = 0;
+  let touchStartDistance = 0;
+  let touchStartZoom = 1;
+  let touchStartCenterX = 0;
+  let touchStartCenterY = 0;
+  let touchStartPanX = 0;
+  let touchStartPanY = 0;
+  let isPinching = false;
   let resizeTimer = null;
 
   if (!catalogId) {
@@ -499,11 +507,11 @@
   }
 
   function nextPage() {
-    if (pageFlip && !isDragging) pageFlip.flipNext();
+    if (pageFlip && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipNext();
   }
 
   function prevPage() {
-    if (pageFlip && !isDragging) pageFlip.flipPrev();
+    if (pageFlip && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipPrev();
   }
 
   function applyZoom() {
@@ -562,6 +570,7 @@
       panY = startPanY + deltaY;
       viewerEl.classList.add("dragging");
       applyZoom();
+      suppressFlipUntil = Date.now() + 350;
       event?.preventDefault();
     }
   }
@@ -572,6 +581,60 @@
     window.setTimeout(() => {
       isDragging = false;
     }, 120);
+  }
+
+  function getTouchDistance(touches) {
+    const deltaX = touches[0].clientX - touches[1].clientX;
+    const deltaY = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(deltaX, deltaY);
+  }
+
+  function getTouchCenter(touches) {
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    };
+  }
+
+  function beginPinch(touches) {
+    const center = getTouchCenter(touches);
+    isPinching = true;
+    isPointerDown = false;
+    isDragging = false;
+    touchStartDistance = getTouchDistance(touches);
+    touchStartZoom = zoomLevel;
+    touchStartCenterX = center.x;
+    touchStartCenterY = center.y;
+    touchStartPanX = panX;
+    touchStartPanY = panY;
+    suppressFlipUntil = Date.now() + 500;
+  }
+
+  function movePinch(touches, event) {
+    if (!isPinching || touches.length < 2 || !touchStartDistance) return;
+
+    const center = getTouchCenter(touches);
+    const distance = getTouchDistance(touches);
+    const nextZoom = Math.min(Math.max(touchStartZoom * (distance / touchStartDistance), 0.7), 2.8);
+    const zoomRatio = nextZoom / touchStartZoom;
+
+    zoomLevel = nextZoom;
+    panX = touchStartPanX + (center.x - touchStartCenterX) * 0.9;
+    panY = touchStartPanY + (center.y - touchStartCenterY) * 0.9;
+
+    if (Math.abs(zoomRatio - 1) > 0.015) {
+      suppressFlipUntil = Date.now() + 500;
+    }
+
+    applyZoom();
+    event.preventDefault();
+  }
+
+  function endPinch() {
+    if (!isPinching) return;
+
+    isPinching = false;
+    suppressFlipUntil = Date.now() + 500;
   }
 
   viewerEl.addEventListener("wheel", (event) => {
@@ -590,22 +653,59 @@
   }, { passive: false });
 
   viewerEl.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     viewerEl.setPointerCapture?.(event.pointerId);
     beginDrag(event.clientX, event.clientY);
   });
 
   viewerEl.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
     moveDrag(event.clientX, event.clientY, event);
   });
 
   viewerEl.addEventListener("pointerup", endDrag);
   viewerEl.addEventListener("pointercancel", endDrag);
 
+  viewerEl.addEventListener("touchstart", (event) => {
+    if (event.touches.length === 2) {
+      beginPinch(event.touches);
+      event.preventDefault();
+      return;
+    }
+
+    if (event.touches.length === 1 && zoomLevel > 1.02) {
+      beginDrag(event.touches[0].clientX, event.touches[0].clientY);
+    }
+  }, { passive: false });
+
+  viewerEl.addEventListener("touchmove", (event) => {
+    if (event.touches.length === 2) {
+      movePinch(event.touches, event);
+      return;
+    }
+
+    if (event.touches.length === 1 && zoomLevel > 1.02) {
+      moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
+    }
+  }, { passive: false });
+
+  viewerEl.addEventListener("touchend", (event) => {
+    if (event.touches.length < 2) endPinch();
+    if (event.touches.length === 0) endDrag();
+  }, { passive: false });
+
   viewerEl.addEventListener("click", (event) => {
-    if (isDragging) {
+    if (isDragging || Date.now() < suppressFlipUntil) {
       event.preventDefault();
       event.stopPropagation();
+    }
+  }, true);
+
+  bookEl.addEventListener("click", (event) => {
+    if (isDragging || Date.now() < suppressFlipUntil) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
     }
   }, true);
 
