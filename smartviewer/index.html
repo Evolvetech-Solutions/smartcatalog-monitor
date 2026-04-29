@@ -135,8 +135,8 @@
   </div>
 
 <script>
-  const API_BASE = "https://api.evolvetech-solutions.de";
   const params = new URLSearchParams(window.location.search);
+  const API_BASE = params.get("api_base") || window.location.origin;
   const catalogId = params.get("catalog");
 
   const viewerEl = document.getElementById("viewer");

@@ -75,6 +75,19 @@ Auf dem VPS sollte `API_BASE_URL` auf die echte API-Domain zeigen:
 https://api.evolvetech-solutions.de
 ```
 
+## Anzeigearten
+
+Ein Katalog kann aktuell auf zwei Arten angezeigt werden:
+
+- `viewer_url`: normale PDF-Ansicht ueber PDF.js, z. B. `/viewer/web/viewer.html?file=...`
+- `flipbook_url`: Blaetterkatalog ueber den Smartviewer, z. B. `/smartviewer/index.html?catalog=...`
+
+Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:
+
+```text
+/smartviewer/index.html?catalog=123&api_base=http://localhost:3001
+```
+
 ## Private Daten
 
 Diese Dateien und Ordner gehoeren nicht in GitHub:
