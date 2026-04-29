@@ -150,13 +150,6 @@
       transform: translateY(0);
     }
 
-    button:disabled {
-      cursor: not-allowed;
-      opacity: 0.42;
-      transform: none;
-      box-shadow: none;
-    }
-
     .control-button {
       padding: 0 12px;
     }
@@ -203,28 +196,6 @@
     #book {
       background: transparent;
       filter: drop-shadow(var(--shadow));
-    }
-
-    #viewer.zoomed #book {
-      pointer-events: none;
-    }
-
-    #panLayer {
-      position: absolute;
-      inset: 0;
-      z-index: 3;
-      display: block;
-      cursor: default;
-      touch-action: none;
-    }
-
-    #viewer.zoomed #panLayer,
-    #viewer.dragging #panLayer {
-      cursor: grab;
-    }
-
-    #viewer.dragging #panLayer {
-      cursor: grabbing;
     }
 
     .page {
@@ -410,8 +381,8 @@
     <div id="pageInfo">Seite - / -</div>
 
     <div id="controls">
-      <button id="prevButton" class="control-button" type="button" onclick="prevPage()">&larr; <span class="control-label">Zurück</span></button>
-      <button id="nextButton" class="control-button" type="button" onclick="nextPage()"><span class="control-label">Weiter</span> &rarr;</button>
+      <button class="control-button" type="button" onclick="prevPage()">&larr; <span class="control-label">Zurück</span></button>
+      <button class="control-button" type="button" onclick="nextPage()"><span class="control-label">Weiter</span> &rarr;</button>
       <button class="icon-button" type="button" title="Zoom kleiner" onclick="zoomOut()">-</button>
       <button class="icon-button" type="button" title="Zoom größer" onclick="zoomIn()">+</button>
       <button class="control-button secondary-button" type="button" onclick="resetZoom()">Reset</button>
@@ -424,7 +395,6 @@
     <div id="zoomWrap">
       <div id="book"></div>
     </div>
-    <div id="panLayer" aria-hidden="true"></div>
   </main>
 
   <div id="intro">
@@ -448,15 +418,12 @@
   const viewerEl = document.getElementById("viewer");
   const zoomWrap = document.getElementById("zoomWrap");
   const bookEl = document.getElementById("book");
-  const panLayerEl = document.getElementById("panLayer");
   const statusEl = document.getElementById("status");
   const pageInfoEl = document.getElementById("pageInfo");
   const customerNameEl = document.getElementById("customerName");
   const catalogTitleEl = document.getElementById("catalogTitle");
   const logoWrapEl = document.getElementById("logoWrap");
   const logoEl = document.getElementById("logo");
-  const prevButtonEl = document.getElementById("prevButton");
-  const nextButtonEl = document.getElementById("nextButton");
   const introEl = document.getElementById("intro");
   const introTitleEl = document.getElementById("introTitle");
   const introTextEl = document.getElementById("introText");
@@ -475,31 +442,6 @@
   let dragStartY = 0;
   let startPanX = 0;
   let startPanY = 0;
-  let gestureStartTime = 0;
-  let suppressFlipUntil = 0;
-  let touchStartDistance = 0;
-  let touchStartZoom = 1;
-  let touchStartCenterX = 0;
-  let touchStartCenterY = 0;
-  let touchStartPanX = 0;
-  let touchStartPanY = 0;
-  let touchSwipeActive = false;
-  let touchSwipeStartX = 0;
-  let touchSwipeStartY = 0;
-  let touchSwipeStartTime = 0;
-  let isPinching = false;
-  let activePointers = new Map();
-  let gestureMode = "idle";
-  let gestureStartX = 0;
-  let gestureStartY = 0;
-  let gestureLastX = 0;
-  let gestureLastY = 0;
-  let pointerPinchDistance = 0;
-  let pointerPinchZoom = 1;
-  let pointerPinchCenterX = 0;
-  let pointerPinchCenterY = 0;
-  let pointerPinchPanX = 0;
-  let pointerPinchPanY = 0;
 
   if (!catalogId) {
     statusEl.innerText = "Kein Katalog angegeben.";
@@ -553,91 +495,29 @@
     if (!pageFlip) return;
     const current = pageFlip.getCurrentPageIndex() + 1;
     pageInfoEl.innerText = `Seite ${current} / ${totalPages}`;
-    updateNavigationState();
   }
 
   function nextPage() {
-    if (!pageFlip || isDragging) return;
-    if (isZoomed()) {
-      resetZoom();
-      pageFlip.flipNext();
-      return;
-    }
-    if (Date.now() < suppressFlipUntil) return;
-    pageFlip.flipNext();
+    if (pageFlip && !isDragging) pageFlip.flipNext();
   }
 
   function prevPage() {
-    if (!pageFlip || isDragging) return;
-    if (isZoomed()) {
-      resetZoom();
-      pageFlip.flipPrev();
-      return;
-    }
-    if (Date.now() < suppressFlipUntil) return;
-    pageFlip.flipPrev();
-  }
-
-  function isZoomed() {
-    return zoomLevel > 1.02;
-  }
-
-  function updateZoomMode() {
-    viewerEl.classList.toggle("zoomed", isZoomed());
-    if (isZoomed()) {
-      suppressFlipUntil = Date.now() + 350;
-    }
-    updateNavigationState();
-  }
-
-  function updateNavigationState() {
-    prevButtonEl.disabled = isPinching;
-    nextButtonEl.disabled = isPinching;
-    prevButtonEl.title = isZoomed() ? "Zoom zurücksetzen und vorherige Seite öffnen" : "Vorherige Seite";
-    nextButtonEl.title = isZoomed() ? "Zoom zurücksetzen und nächste Seite öffnen" : "Nächste Seite";
-  }
-
-  function getViewerPoint(clientX, clientY) {
-    const rect = viewerEl.getBoundingClientRect();
-    return {
-      x: clientX - rect.left - rect.width / 2,
-      y: clientY - rect.top - rect.height / 2
-    };
-  }
-
-  function setZoomAt(nextZoom, clientX, clientY) {
-    const clampedZoom = Math.min(Math.max(nextZoom, 0.7), 2.8);
-    const point = getViewerPoint(clientX, clientY);
-    const contentX = (point.x - panX) / zoomLevel;
-    const contentY = (point.y - panY) / zoomLevel;
-
-    zoomLevel = clampedZoom;
-    panX = point.x - contentX * zoomLevel;
-    panY = point.y - contentY * zoomLevel;
-
-    if (!isZoomed()) {
-      panX = 0;
-      panY = 0;
-    }
-
-    applyZoom();
+    if (pageFlip && !isDragging) pageFlip.flipPrev();
   }
 
   function applyZoom() {
-    zoomWrap.style.transformOrigin = "center center";
     zoomWrap.style.transform =
       `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
-    updateZoomMode();
   }
 
   function zoomIn() {
-    const rect = viewerEl.getBoundingClientRect();
-    setZoomAt(zoomLevel + 0.15, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    zoomLevel = Math.min(zoomLevel + 0.15, 2.5);
+    applyZoom();
   }
 
   function zoomOut() {
-    const rect = viewerEl.getBoundingClientRect();
-    setZoomAt(zoomLevel - 0.15, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    zoomLevel = Math.max(zoomLevel - 0.15, 0.7);
+    applyZoom();
   }
 
   function resetZoom() {
@@ -663,25 +543,17 @@
     dragStartY = clientY;
     startPanX = panX;
     startPanY = panY;
-    gestureStartTime = Date.now();
   }
 
   function moveDrag(clientX, clientY, event) {
     if (!isPointerDown) return;
+    if (zoomLevel <= 1.02) return;
 
     const deltaX = clientX - dragStartX;
     const deltaY = clientY - dragStartY;
-    const horizontalGesture = Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
 
     if (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6) {
       isDragging = true;
-    }
-
-    if (!isZoomed()) {
-      if (horizontalGesture && isDragging) {
-        event?.preventDefault();
-      }
-      return;
     }
 
     if (isDragging) {
@@ -689,360 +561,52 @@
       panY = startPanY + deltaY;
       viewerEl.classList.add("dragging");
       applyZoom();
-      suppressFlipUntil = Date.now() + 350;
       event?.preventDefault();
     }
   }
 
-  function movePan(clientX, clientY, event) {
-    const deltaX = clientX - gestureStartX;
-    const deltaY = clientY - gestureStartY;
-
-    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
-      isDragging = true;
-      viewerEl.classList.add("dragging");
-    }
-
-    panX = startPanX + deltaX;
-    panY = startPanY + deltaY;
-    applyZoom();
-    event?.preventDefault();
-  }
-
-  function endDrag(clientX = dragStartX, clientY = dragStartY, allowFlip = true) {
-    const wasPointerDown = isPointerDown;
-    const wasDragging = isDragging;
-    const deltaX = clientX - dragStartX;
-    const deltaY = clientY - dragStartY;
-    const gestureTime = Date.now() - gestureStartTime;
-
+  function endDrag() {
     isPointerDown = false;
     viewerEl.classList.remove("dragging");
-
-    if (allowFlip && wasPointerDown && !isZoomed() && wasDragging && Date.now() > suppressFlipUntil) {
-      const minSwipeDistance = Math.min(120, Math.max(52, viewerEl.clientWidth * 0.10));
-      const isHorizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
-      const isIntentionalGesture = gestureTime < 1200 || Math.abs(deltaX) > minSwipeDistance * 1.7;
-
-      if (isHorizontalSwipe && isIntentionalGesture) {
-        suppressFlipUntil = Date.now() + 450;
-        if (deltaX < 0) {
-          pageFlip?.flipNext();
-        } else {
-          pageFlip?.flipPrev();
-        }
-      }
-    }
-
     window.setTimeout(() => {
       isDragging = false;
     }, 120);
   }
 
-  function getTouchDistance(touches) {
-    const deltaX = touches[0].clientX - touches[1].clientX;
-    const deltaY = touches[0].clientY - touches[1].clientY;
-    return Math.hypot(deltaX, deltaY);
-  }
-
-  function getTouchCenter(touches) {
-    return {
-      x: (touches[0].clientX + touches[1].clientX) / 2,
-      y: (touches[0].clientY + touches[1].clientY) / 2
-    };
-  }
-
-  function beginTouchSwipe(touch) {
-    touchSwipeActive = true;
-    touchSwipeStartX = touch.clientX;
-    touchSwipeStartY = touch.clientY;
-    touchSwipeStartTime = Date.now();
-  }
-
-  function updateTouchSwipe(touch, event) {
-    if (!touchSwipeActive) return;
-
-    const deltaX = touch.clientX - touchSwipeStartX;
-    const deltaY = touch.clientY - touchSwipeStartY;
-    const horizontalGesture = Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
-
-    if (!isZoomed() && horizontalGesture) {
-      event.preventDefault();
-    }
-  }
-
-  function finishTouchSwipe(touch) {
-    if (!touchSwipeActive || !touch || isZoomed()) {
-      touchSwipeActive = false;
-      return false;
-    }
-
-    const deltaX = touch.clientX - touchSwipeStartX;
-    const deltaY = touch.clientY - touchSwipeStartY;
-    const gestureTime = Date.now() - touchSwipeStartTime;
-    const minSwipeDistance = Math.min(96, Math.max(42, viewerEl.clientWidth * 0.08));
-    const isHorizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
-    const isIntentionalGesture = gestureTime < 1400 || Math.abs(deltaX) > minSwipeDistance * 1.7;
-
-    touchSwipeActive = false;
-
-    if (!isHorizontalSwipe || !isIntentionalGesture || Date.now() < suppressFlipUntil) {
-      return false;
-    }
-
-    suppressFlipUntil = Date.now() + 420;
-    if (deltaX < 0) {
-      pageFlip?.flipNext();
-    } else {
-      pageFlip?.flipPrev();
-    }
-
-    return true;
-  }
-
-  function beginPinch(touches) {
-    const center = getTouchCenter(touches);
-    isPinching = true;
-    isPointerDown = false;
-    isDragging = false;
-    touchSwipeActive = false;
-    touchStartDistance = getTouchDistance(touches);
-    touchStartZoom = zoomLevel;
-    touchStartCenterX = center.x;
-    touchStartCenterY = center.y;
-    touchStartPanX = panX;
-    touchStartPanY = panY;
-    suppressFlipUntil = Date.now() + 500;
-    updateNavigationState();
-  }
-
-  function movePinch(touches, event) {
-    if (!isPinching || touches.length < 2 || !touchStartDistance) return;
-
-    const center = getTouchCenter(touches);
-    const distance = getTouchDistance(touches);
-    const nextZoom = Math.min(Math.max(touchStartZoom * (distance / touchStartDistance), 0.7), 2.8);
-    const zoomRatio = nextZoom / touchStartZoom;
-    const startPoint = getViewerPoint(touchStartCenterX, touchStartCenterY);
-    const currentPoint = getViewerPoint(center.x, center.y);
-    const contentX = (startPoint.x - touchStartPanX) / touchStartZoom;
-    const contentY = (startPoint.y - touchStartPanY) / touchStartZoom;
-
-    zoomLevel = nextZoom;
-    panX = currentPoint.x - contentX * zoomLevel;
-    panY = currentPoint.y - contentY * zoomLevel;
-
-    if (!isZoomed()) {
-      panX = 0;
-      panY = 0;
-    }
-
-    if (Math.abs(zoomRatio - 1) > 0.015) {
-      suppressFlipUntil = Date.now() + 500;
-    }
-
-    applyZoom();
-    event.preventDefault();
-  }
-
-  function endPinch() {
-    if (!isPinching) return;
-
-    isPinching = false;
-    suppressFlipUntil = Date.now() + 500;
-    updateNavigationState();
-  }
-
-  function getPointerList() {
-    return Array.from(activePointers.values());
-  }
-
-  function getPointerCenter(points) {
-    return {
-      x: (points[0].x + points[1].x) / 2,
-      y: (points[0].y + points[1].y) / 2
-    };
-  }
-
-  function getPointerDistance(points) {
-    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-  }
-
-  function startSingleGesture(point) {
-    gestureMode = "single";
-    isPointerDown = true;
-    isDragging = false;
-    gestureStartX = point.x;
-    gestureStartY = point.y;
-    gestureLastX = point.x;
-    gestureLastY = point.y;
-    startPanX = panX;
-    startPanY = panY;
-    gestureStartTime = Date.now();
-  }
-
-  function startPointerPinch() {
-    const points = getPointerList();
-    if (points.length < 2) return;
-
-    const center = getPointerCenter(points);
-    gestureMode = "pinch";
-    isPinching = true;
-    isPointerDown = false;
-    isDragging = false;
-    pointerPinchDistance = getPointerDistance(points);
-    pointerPinchZoom = zoomLevel;
-    pointerPinchCenterX = center.x;
-    pointerPinchCenterY = center.y;
-    pointerPinchPanX = panX;
-    pointerPinchPanY = panY;
-    suppressFlipUntil = Date.now() + 350;
-    updateNavigationState();
-  }
-
-  function movePointerPinch(event) {
-    const points = getPointerList();
-    if (points.length < 2 || !pointerPinchDistance) return;
-
-    const center = getPointerCenter(points);
-    const distance = getPointerDistance(points);
-    const nextZoom = Math.min(Math.max(pointerPinchZoom * (distance / pointerPinchDistance), 0.7), 2.8);
-    const startPoint = getViewerPoint(pointerPinchCenterX, pointerPinchCenterY);
-    const currentPoint = getViewerPoint(center.x, center.y);
-    const contentX = (startPoint.x - pointerPinchPanX) / pointerPinchZoom;
-    const contentY = (startPoint.y - pointerPinchPanY) / pointerPinchZoom;
-
-    zoomLevel = nextZoom;
-    panX = currentPoint.x - contentX * zoomLevel;
-    panY = currentPoint.y - contentY * zoomLevel;
-
-    if (!isZoomed()) {
-      panX = 0;
-      panY = 0;
-    }
-
-    applyZoom();
-    suppressFlipUntil = Date.now() + 350;
-    event.preventDefault();
-  }
-
-  function finishSingleGesture(point) {
-    const deltaX = point.x - gestureStartX;
-    const deltaY = point.y - gestureStartY;
-    const gestureTime = Date.now() - gestureStartTime;
-    const minSwipeDistance = Math.min(90, Math.max(36, viewerEl.clientWidth * 0.08));
-    const horizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
-    const intentionalSwipe = gestureTime < 1400 || Math.abs(deltaX) > minSwipeDistance * 1.7;
-
-    if (!isZoomed() && horizontalSwipe && intentionalSwipe && pageFlip) {
-      suppressFlipUntil = Date.now() + 350;
-      if (deltaX < 0) {
-        pageFlip.flipNext();
-      } else {
-        pageFlip.flipPrev();
-      }
-    }
-
-    isPointerDown = false;
-    viewerEl.classList.remove("dragging");
-    window.setTimeout(() => {
-      isDragging = false;
-    }, 80);
-  }
-
-  function finishPointerGesture(point) {
-    if (gestureMode === "pinch") {
-      endPinch();
-      if (activePointers.size === 1) {
-        const remainingPoint = getPointerList()[0];
-        startSingleGesture(remainingPoint);
-        if (!isZoomed()) {
-          gestureMode = "idle";
-          isPointerDown = false;
-        }
-        return;
-      }
-    } else if (gestureMode === "single" && point) {
-      finishSingleGesture(point);
-    }
-
-    if (activePointers.size === 0) {
-      gestureMode = "idle";
-    }
-  }
-
   viewerEl.addEventListener("wheel", (event) => {
     event.preventDefault();
 
+    const rect = zoomWrap.getBoundingClientRect();
+    const originX = event.clientX - rect.left;
+    const originY = event.clientY - rect.top;
+
+    zoomWrap.style.transformOrigin = `${originX}px ${originY}px`;
+
     const direction = event.deltaY < 0 ? 1 : -1;
-    setZoomAt(zoomLevel + direction * 0.1, event.clientX, event.clientY);
+    zoomLevel = Math.min(Math.max(zoomLevel + direction * 0.1, 0.7), 2.5);
+
+    applyZoom();
   }, { passive: false });
 
-  panLayerEl.addEventListener("pointerdown", (event) => {
+  viewerEl.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    viewerEl.setPointerCapture?.(event.pointerId);
+    beginDrag(event.clientX, event.clientY);
+  });
 
-    panLayerEl.setPointerCapture?.(event.pointerId);
-    activePointers.set(event.pointerId, {
-      id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY
-    });
+  viewerEl.addEventListener("pointermove", (event) => {
+    moveDrag(event.clientX, event.clientY, event);
+  });
 
-    if (activePointers.size === 1) {
-      startSingleGesture({ x: event.clientX, y: event.clientY });
-    } else if (activePointers.size === 2) {
-      startPointerPinch();
+  viewerEl.addEventListener("pointerup", endDrag);
+  viewerEl.addEventListener("pointercancel", endDrag);
+
+  viewerEl.addEventListener("click", (event) => {
+    if (isDragging) {
+      event.preventDefault();
+      event.stopPropagation();
     }
-
-    event.preventDefault();
-  });
-
-  panLayerEl.addEventListener("pointermove", (event) => {
-    if (!activePointers.has(event.pointerId)) return;
-
-    activePointers.set(event.pointerId, {
-      id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY
-    });
-
-    if (gestureMode === "pinch") {
-      movePointerPinch(event);
-      return;
-    }
-
-    if (gestureMode === "single") {
-      gestureLastX = event.clientX;
-      gestureLastY = event.clientY;
-
-      if (isZoomed()) {
-        movePan(event.clientX, event.clientY, event);
-      } else {
-        const deltaX = event.clientX - gestureStartX;
-        const deltaY = event.clientY - gestureStartY;
-        if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1) {
-          event.preventDefault();
-        }
-      }
-    }
-  });
-
-  panLayerEl.addEventListener("pointerup", (event) => {
-    if (!activePointers.has(event.pointerId)) return;
-
-    const point = { x: event.clientX, y: event.clientY };
-    activePointers.delete(event.pointerId);
-    finishPointerGesture(point);
-  });
-
-  panLayerEl.addEventListener("pointercancel", () => {
-    activePointers.clear();
-    endPinch();
-    isPointerDown = false;
-    isDragging = false;
-    gestureMode = "idle";
-    viewerEl.classList.remove("dragging");
-  });
+  }, true);
 
   async function imageExists(url) {
     try {
@@ -1149,14 +713,10 @@
         showCover: false,
         usePortrait: size.isMobile,
         mobileScrollSupport: false,
-        useMouseEvents: false,
-        clickEventForward: false,
-        swipeDistance: 9999,
         flippingTime: 650,
         drawShadow: true,
         maxShadowOpacity: 0.35,
-        showPageCorners: false,
-        disableFlipByClick: true
+        disableFlipByClick: false
       });
 
       pageFlip.loadFromHTML(pageElements);
