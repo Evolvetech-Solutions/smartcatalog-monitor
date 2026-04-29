@@ -198,6 +198,10 @@
       filter: drop-shadow(var(--shadow));
     }
 
+    #viewer.zoomed #book {
+      pointer-events: none;
+    }
+
     .page {
       display: flex;
       align-items: center;
@@ -507,16 +511,28 @@
   }
 
   function nextPage() {
-    if (pageFlip && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipNext();
+    if (pageFlip && !isZoomed() && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipNext();
   }
 
   function prevPage() {
-    if (pageFlip && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipPrev();
+    if (pageFlip && !isZoomed() && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipPrev();
+  }
+
+  function isZoomed() {
+    return zoomLevel > 1.02;
+  }
+
+  function updateZoomMode() {
+    viewerEl.classList.toggle("zoomed", isZoomed());
+    if (isZoomed()) {
+      suppressFlipUntil = Date.now() + 350;
+    }
   }
 
   function applyZoom() {
     zoomWrap.style.transform =
       `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+    updateZoomMode();
   }
 
   function zoomIn() {
@@ -556,7 +572,7 @@
 
   function moveDrag(clientX, clientY, event) {
     if (!isPointerDown) return;
-    if (zoomLevel <= 1.02) return;
+    if (!isZoomed()) return;
 
     const deltaX = clientX - dragStartX;
     const deltaY = clientY - dragStartY;
@@ -674,8 +690,9 @@
       return;
     }
 
-    if (event.touches.length === 1 && zoomLevel > 1.02) {
+    if (event.touches.length === 1 && isZoomed()) {
       beginDrag(event.touches[0].clientX, event.touches[0].clientY);
+      suppressFlipUntil = Date.now() + 350;
     }
   }, { passive: false });
 
@@ -685,7 +702,7 @@
       return;
     }
 
-    if (event.touches.length === 1 && zoomLevel > 1.02) {
+    if (event.touches.length === 1 && isZoomed()) {
       moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
     }
   }, { passive: false });
@@ -695,15 +712,24 @@
     if (event.touches.length === 0) endDrag();
   }, { passive: false });
 
+  ["pointerdown", "mousedown", "touchstart", "click"].forEach((eventName) => {
+    bookEl.addEventListener(eventName, (event) => {
+      if (isZoomed() || Date.now() < suppressFlipUntil) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }, true);
+  });
+
   viewerEl.addEventListener("click", (event) => {
-    if (isDragging || Date.now() < suppressFlipUntil) {
+    if (isZoomed() || isDragging || Date.now() < suppressFlipUntil) {
       event.preventDefault();
       event.stopPropagation();
     }
   }, true);
 
   bookEl.addEventListener("click", (event) => {
-    if (isDragging || Date.now() < suppressFlipUntil) {
+    if (isZoomed() || isDragging || Date.now() < suppressFlipUntil) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
