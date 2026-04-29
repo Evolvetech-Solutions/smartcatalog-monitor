@@ -463,6 +463,10 @@
   let touchStartCenterY = 0;
   let touchStartPanX = 0;
   let touchStartPanY = 0;
+  let touchSwipeActive = false;
+  let touchSwipeStartX = 0;
+  let touchSwipeStartY = 0;
+  let touchSwipeStartTime = 0;
   let isPinching = false;
   let resizeTimer = null;
 
@@ -646,7 +650,7 @@
     }
   }
 
-  function endDrag(clientX = dragStartX, clientY = dragStartY) {
+  function endDrag(clientX = dragStartX, clientY = dragStartY, allowFlip = true) {
     const wasPointerDown = isPointerDown;
     const wasDragging = isDragging;
     const deltaX = clientX - dragStartX;
@@ -656,7 +660,7 @@
     isPointerDown = false;
     viewerEl.classList.remove("dragging");
 
-    if (wasPointerDown && !isZoomed() && wasDragging && Date.now() > suppressFlipUntil) {
+    if (allowFlip && wasPointerDown && !isZoomed() && wasDragging && Date.now() > suppressFlipUntil) {
       const minSwipeDistance = Math.min(120, Math.max(52, viewerEl.clientWidth * 0.10));
       const isHorizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.35;
       const isIntentionalGesture = gestureTime < 1200 || Math.abs(deltaX) > minSwipeDistance * 1.7;
@@ -689,11 +693,60 @@
     };
   }
 
+  function beginTouchSwipe(touch) {
+    touchSwipeActive = true;
+    touchSwipeStartX = touch.clientX;
+    touchSwipeStartY = touch.clientY;
+    touchSwipeStartTime = Date.now();
+  }
+
+  function updateTouchSwipe(touch, event) {
+    if (!touchSwipeActive) return;
+
+    const deltaX = touch.clientX - touchSwipeStartX;
+    const deltaY = touch.clientY - touchSwipeStartY;
+    const horizontalGesture = Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
+
+    if (!isZoomed() && horizontalGesture) {
+      event.preventDefault();
+    }
+  }
+
+  function finishTouchSwipe(touch) {
+    if (!touchSwipeActive || !touch || isZoomed()) {
+      touchSwipeActive = false;
+      return false;
+    }
+
+    const deltaX = touch.clientX - touchSwipeStartX;
+    const deltaY = touch.clientY - touchSwipeStartY;
+    const gestureTime = Date.now() - touchSwipeStartTime;
+    const minSwipeDistance = Math.min(96, Math.max(42, viewerEl.clientWidth * 0.08));
+    const isHorizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+    const isIntentionalGesture = gestureTime < 1400 || Math.abs(deltaX) > minSwipeDistance * 1.7;
+
+    touchSwipeActive = false;
+
+    if (!isHorizontalSwipe || !isIntentionalGesture || Date.now() < suppressFlipUntil) {
+      return false;
+    }
+
+    suppressFlipUntil = Date.now() + 420;
+    if (deltaX < 0) {
+      pageFlip?.flipNext();
+    } else {
+      pageFlip?.flipPrev();
+    }
+
+    return true;
+  }
+
   function beginPinch(touches) {
     const center = getTouchCenter(touches);
     isPinching = true;
     isPointerDown = false;
     isDragging = false;
+    touchSwipeActive = false;
     touchStartDistance = getTouchDistance(touches);
     touchStartZoom = zoomLevel;
     touchStartCenterX = center.x;
@@ -774,6 +827,7 @@
     }
 
     if (event.touches.length === 1) {
+      beginTouchSwipe(event.touches[0]);
       beginDrag(event.touches[0].clientX, event.touches[0].clientY);
       if (isZoomed()) suppressFlipUntil = Date.now() + 350;
     }
@@ -786,18 +840,26 @@
     }
 
     if (event.touches.length === 1) {
+      updateTouchSwipe(event.touches[0], event);
       moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
     }
   }, { passive: false });
 
   viewerEl.addEventListener("touchend", (event) => {
+    const wasPinching = isPinching;
     if (event.touches.length < 2) endPinch();
     if (event.touches.length === 1 && isZoomed()) {
+      touchSwipeActive = false;
       beginDrag(event.touches[0].clientX, event.touches[0].clientY);
     }
     if (event.touches.length === 0) {
       const changedTouch = event.changedTouches[0];
-      endDrag(changedTouch?.clientX, changedTouch?.clientY);
+      if (!wasPinching) {
+        finishTouchSwipe(changedTouch);
+      } else {
+        touchSwipeActive = false;
+      }
+      endDrag(changedTouch?.clientX, changedTouch?.clientY, false);
     }
   }, { passive: false });
 
