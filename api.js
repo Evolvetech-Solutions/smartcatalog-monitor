@@ -39,7 +39,13 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/uploads", express.static(path.resolve("./uploads")));
+app.get("/viewer/web/viewer.html", (req, res) => {
+  res.sendFile(path.resolve("./pdf-viewer/viewer.html"));
+});
 app.use("/viewer", express.static(path.resolve("./viewer")));
+app.use("/pdfjs/build", express.static(path.resolve("./node_modules/pdfjs-dist/build")));
+app.use("/pdfjs/cmaps", express.static(path.resolve("./node_modules/pdfjs-dist/cmaps")));
+app.use("/pdfjs/standard_fonts", express.static(path.resolve("./node_modules/pdfjs-dist/standard_fonts")));
 app.use("/smartviewer", express.static(path.resolve("./smartviewer")));
 app.use("/catalog-pages", express.static(path.resolve("./catalog-pages")));
 
