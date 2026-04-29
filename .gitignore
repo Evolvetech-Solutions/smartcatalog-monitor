@@ -1,3 +1,29 @@
 node_modules
 .env
 state.json
+# Secrets
+.env
+.env.*
+
+# Dependencies
+node_modules/
+
+# Runtime data
+uploads/
+catalog-pages/
+customers.json
+requests.json
+history.json
+state.json
+urls.json
+
+# Logs and PM2/runtime
+*.log
+.pm2/
+
+# Local backups / temporary files
+api_backup_*.js
+*_backup_*.js
+*_broken_*.js
+*.zip
+img/temp

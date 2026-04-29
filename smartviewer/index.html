@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCatalog Viewer</title>
+
+  <script src="https://unpkg.com/page-flip/dist/js/page-flip.browser.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #e9e9e9;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #toolbar {
+      height: 58px;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 6px 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    button {
+      background: #222;
+      color: #fff;
+      border: 0;
+      padding: 8px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    #pageInfo {
+      min-width: 120px;
+      text-align: center;
+      font-size: 14px;
+      color: #333;
+    }
+
+    #viewer {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      background: #d9d9d9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: grab;
+    }
+
+    #viewer.dragging {
+      cursor: grabbing;
+    }
+
+    #zoomWrap {
+      transform-origin: center center;
+      transition: transform .08s ease;
+      will-change: transform;
+    }
+
+    #book {
+      background: transparent;
+    }
+
+    .page {
+      background: #fff;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .page img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    #status {
+      position: absolute;
+      color: #333;
+      font-size: 15px;
+      z-index: 2;
+    }
+
+    @media (max-width: 800px) {
+      #toolbar {
+        height: auto;
+        flex-wrap: wrap;
+      }
+
+      button {
+        font-size: 13px;
+        padding: 7px 10px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="toolbar">
+    <button onclick="prevPage()">← Zurück</button>
+    <span id="pageInfo">Seite - / -</span>
+    <button onclick="nextPage()">Weiter →</button>
+    <button onclick="zoomOut()">− Zoom</button>
+    <button onclick="zoomIn()">+ Zoom</button>
+    <button onclick="resetZoom()">Reset</button>
+    <button onclick="toggleFullscreen()">Vollbild</button>
+  </div>
+
+  <div id="viewer">
+    <div id="status">Katalog wird geladen...</div>
+    <div id="zoomWrap">
+      <div id="book"></div>
+    </div>
+  </div>
+
+<script>
+  const API_BASE = "https://api.evolvetech-solutions.de";
+  const params = new URLSearchParams(window.location.search);
+  const catalogId = params.get("catalog");
+
+  const viewerEl = document.getElementById("viewer");
+  const zoomWrap = document.getElementById("zoomWrap");
+  const bookEl = document.getElementById("book");
+  const statusEl = document.getElementById("status");
+  const pageInfoEl = document.getElementById("pageInfo");
+
+  let pageFlip = null;
+  let totalPages = 0;
+
+  let zoomLevel = 1;
+  let panX = 0;
+  let panY = 0;
+
+  let isMouseDown = false;
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let startPanX = 0;
+  let startPanY = 0;
+
+  if (!catalogId) {
+    statusEl.innerText = "Kein Katalog angegeben.";
+    throw new Error("Kein catalog Parameter");
+  }
+
+  function updatePageInfo() {
+    if (!pageFlip) return;
+    const current = pageFlip.getCurrentPageIndex() + 1;
+    pageInfoEl.innerText = `Seite ${current} / ${totalPages}`;
+  }
+
+  function nextPage() {
+    if (pageFlip && !isDragging) pageFlip.flipNext();
+  }
+
+  function prevPage() {
+    if (pageFlip && !isDragging) pageFlip.flipPrev();
+  }
+
+  function applyZoom() {
+    zoomWrap.style.transform =
+      `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+  }
+
+  function zoomIn() {
+    zoomLevel = Math.min(zoomLevel + 0.15, 2.5);
+    applyZoom();
+  }
+
+  function zoomOut() {
+    zoomLevel = Math.max(zoomLevel - 0.15, 0.7);
+    applyZoom();
+  }
+
+  function resetZoom() {
+    zoomLevel = 1;
+    panX = 0;
+    panY = 0;
+    zoomWrap.style.transformOrigin = "center center";
+    applyZoom();
+  }
+
+  viewerEl.addEventListener("wheel", (event) => {
+    event.preventDefault();
+
+    const rect = zoomWrap.getBoundingClientRect();
+    const originX = event.clientX - rect.left;
+    const originY = event.clientY - rect.top;
+
+    zoomWrap.style.transformOrigin = `${originX}px ${originY}px`;
+
+    const direction = event.deltaY < 0 ? 1 : -1;
+    zoomLevel = Math.min(Math.max(zoomLevel + direction * 0.1, 0.7), 2.5);
+
+    applyZoom();
+  }, { passive: false });
+
+  viewerEl.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+
+    isMouseDown = true;
+    isDragging = false;
+
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    startPanX = panX;
+    startPanY = panY;
+  });
+
+  window.addEventListener("mousemove", (event) => {
+    if (!isMouseDown) return;
+
+    const deltaX = event.clientX - dragStartX;
+    const deltaY = event.clientY - dragStartY;
+
+    if (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6) {
+      isDragging = true;
+    }
+
+    if (isDragging) {
+      panX = startPanX + deltaX;
+      panY = startPanY + deltaY;
+      viewerEl.classList.add("dragging");
+      applyZoom();
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener("mouseup", () => {
+    isMouseDown = false;
+    viewerEl.classList.remove("dragging");
+
+    setTimeout(() => {
+      isDragging = false;
+    }, 120);
+  });
+
+  viewerEl.addEventListener("click", (event) => {
+    if (isDragging) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+  }
+
+  async function imageExists(url) {
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function loadImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  async function loadPages() {
+    const pages = [];
+    let pageNumber = 1;
+
+    while (true) {
+      const url = `${API_BASE}/catalog-pages/${catalogId}/page-${pageNumber}.jpg`;
+
+      const exists = await imageExists(url);
+      if (!exists) break;
+
+      const img = await loadImage(url);
+
+      const pageDiv = document.createElement("div");
+      pageDiv.className = "page";
+      pageDiv.appendChild(img);
+
+      pages.push({
+        element: pageDiv,
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
+
+      pageNumber++;
+    }
+
+    return pages;
+  }
+
+  function calculateBookSize(firstPage) {
+    const viewerRect = viewerEl.getBoundingClientRect();
+
+    const availableWidth = viewerRect.width * 0.96;
+    const availableHeight = viewerRect.height * 0.96;
+
+    const pageRatio = firstPage.width / firstPage.height;
+    const isMobile = viewerRect.width < 800;
+
+    let pageWidth;
+    let pageHeight;
+
+    if (isMobile) {
+      pageHeight = availableHeight;
+      pageWidth = pageHeight * pageRatio;
+
+      if (pageWidth > availableWidth) {
+        pageWidth = availableWidth;
+        pageHeight = pageWidth / pageRatio;
+      }
+    } else {
+      pageHeight = availableHeight;
+      pageWidth = pageHeight * pageRatio;
+
+      if (pageWidth * 2 > availableWidth) {
+        pageWidth = availableWidth / 2;
+        pageHeight = pageWidth / pageRatio;
+      }
+    }
+
+    return {
+      pageWidth: Math.floor(pageWidth),
+      pageHeight: Math.floor(pageHeight),
+      isMobile
+    };
+  }
+
+  async function start() {
+    try {
+      statusEl.innerText = "Seiten werden geladen...";
+
+      const loadedPages = await loadPages();
+
+      if (!loadedPages.length) {
+        statusEl.innerText = "Keine Seiten gefunden.";
+        return;
+      }
+
+      totalPages = loadedPages.length;
+
+      const size = calculateBookSize(loadedPages[0]);
+
+      bookEl.style.width = `${size.pageWidth * (size.isMobile ? 1 : 2)}px`;
+      bookEl.style.height = `${size.pageHeight}px`;
+
+      const pageElements = loadedPages.map((page) => page.element);
+
+      pageFlip = new St.PageFlip(bookEl, {
+        width: size.pageWidth,
+        height: size.pageHeight,
+        size: "fixed",
+        showCover: false,
+        usePortrait: size.isMobile,
+        mobileScrollSupport: false,
+        flippingTime: 650,
+        drawShadow: true,
+        maxShadowOpacity: 0.35,
+        disableFlipByClick: false
+      });
+
+      pageFlip.loadFromHTML(pageElements);
+      pageFlip.on("flip", updatePageInfo);
+
+      statusEl.style.display = "none";
+      resetZoom();
+      updatePageInfo();
+
+    } catch (error) {
+      console.error(error);
+      statusEl.innerText = "Fehler beim Laden des Katalogs.";
+    }
+  }
+
+  window.addEventListener("resize", () => {
+    location.reload();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight") nextPage();
+    if (event.key === "ArrowLeft") prevPage();
+    if (event.key === "+") zoomIn();
+    if (event.key === "-") zoomOut();
+    if (event.key === "0") resetZoom();
+  });
+
+  start();
+</script>
+
+</body>
+</html>
