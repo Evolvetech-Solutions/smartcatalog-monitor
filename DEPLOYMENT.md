@@ -75,6 +75,7 @@ Nicht committen:
 - `.env`
 - `uploads/`
 - `catalog-pages/`
+- `customer-assets/`
 - `data-backups/`
 - `customers.json`
 - `requests.json`

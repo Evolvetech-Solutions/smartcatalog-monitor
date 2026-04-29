@@ -84,6 +84,7 @@ GET /api/requests
 ```http
 POST /api/customer-login
 GET /api/customer/me
+POST /api/customer/logo
 GET /api/customer/catalogs
 POST /api/customer/upload
 POST /api/customer/catalogs
@@ -91,6 +92,36 @@ PUT /api/customer/catalogs/:id
 DELETE /api/customer/catalogs/:id
 GET /api/customer/requests
 POST /api/customer/requests
+```
+
+## SmartViewer-Einstellungen
+
+```http
+GET /api/viewer-settings/:catalogId
+```
+
+Liefert oeffentliche Viewer-Metadaten fuer den SmartViewer:
+
+```json
+{
+  "catalog_id": "1777318518555",
+  "title": "Katalogname",
+  "customer": {
+    "customer_number": "1234",
+    "company_name": "Firma GmbH",
+    "logo_url": "https://api.evolvetech-solutions.de/customer-assets/logo.png"
+  }
+}
+```
+
+Kundenlogo hochladen:
+
+```http
+POST /api/customer/logo
+Content-Type: multipart/form-data
+Authorization: Bearer <CUSTOMER_JWT>
+
+logo=<image file>
 ```
 
 ## Wichtige Datenfelder
@@ -119,6 +150,7 @@ Kunde:
   "id": 1,
   "customer_number": "1234",
   "company_name": "Firma GmbH",
+  "logo_url": "https://api.evolvetech-solutions.de/customer-assets/logo.png",
   "is_active": true
 }
 ```
