@@ -40,7 +40,6 @@ app.use(express.json());
 
 app.use("/uploads", express.static(path.resolve("./uploads")));
 app.use("/viewer", express.static(path.resolve("./viewer")));
-app.use("/flipbook", express.static(path.resolve("./flipbook")));
 app.use("/smartviewer", express.static(path.resolve("./smartviewer")));
 app.use("/catalog-pages", express.static(path.resolve("./catalog-pages")));
 
