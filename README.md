@@ -82,6 +82,8 @@ Ein Katalog kann aktuell auf zwei Arten angezeigt werden:
 - `viewer_url`: normale PDF-Ansicht ueber PDF.js, z. B. `/viewer/web/viewer.html?file=...`
 - `flipbook_url`: Blaetterkatalog ueber den Smartviewer, z. B. `/smartviewer/index.html?catalog=...`
 
+Der alte Serverordner `/flipbook` ist nicht der offizielle Anzeigeweg. Neue Flipbook-Links sollen immer ueber `/smartviewer` laufen.
+
 Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:
 
 ```text

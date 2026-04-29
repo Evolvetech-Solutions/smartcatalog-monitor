@@ -39,6 +39,8 @@ Aktueller Standard fuer den Blaetterkatalog:
 /smartviewer/index.html?catalog=<catalog_id>
 ```
 
+Der alte Pfad `/flipbook` ist kein offizieller Anzeigeweg mehr.
+
 Normale PDF-Ansicht:
 
 ```text
