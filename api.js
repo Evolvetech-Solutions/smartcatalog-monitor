@@ -17,7 +17,7 @@ const PORT = process.env.API_PORT || 3001;
 const API_TOKEN = process.env.API_TOKEN || "";
 const CUSTOMER_JWT_SECRET = process.env.CUSTOMER_JWT_SECRET || "change-me";
 
-const BASE_URL = "https://api.evolvetech-solutions.de";
+const BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
 
 const URLS_FILE = "./urls.json";
 const STATE_FILE = "./state.json";
@@ -27,6 +27,13 @@ const REQUESTS_FILE = "./requests.json";
 
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const execFileAsync = promisify(execFile);
+
+async function ensureRuntimeDirs() {
+  await Promise.all([
+    fs.mkdir("./uploads", { recursive: true }),
+    fs.mkdir(CATALOG_PAGES_DIR, { recursive: true })
+  ]);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -918,6 +925,8 @@ app.get("/api/requests", adminAuth, async (req, res) => {
   const requests = await readJsonFile(REQUESTS_FILE, []);
   res.json(requests);
 });
+
+await ensureRuntimeDirs();
 
 app.listen(PORT, () => {
   console.log(`API läuft auf Port ${PORT}`);
