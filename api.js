@@ -27,12 +27,14 @@ const CUSTOMERS_FILE = "./customers.json";
 const REQUESTS_FILE = "./requests.json";
 
 const CATALOG_PAGES_DIR = "./catalog-pages";
+const CUSTOMER_ASSETS_DIR = "./customer-assets";
 const execFileAsync = promisify(execFile);
 
 async function ensureRuntimeDirs() {
   await Promise.all([
     fs.mkdir("./uploads", { recursive: true }),
-    fs.mkdir(CATALOG_PAGES_DIR, { recursive: true })
+    fs.mkdir(CATALOG_PAGES_DIR, { recursive: true }),
+    fs.mkdir(CUSTOMER_ASSETS_DIR, { recursive: true })
   ]);
 }
 
@@ -49,6 +51,7 @@ app.use("/pdfjs/cmaps", express.static(path.resolve("./node_modules/pdfjs-dist/c
 app.use("/pdfjs/standard_fonts", express.static(path.resolve("./node_modules/pdfjs-dist/standard_fonts")));
 app.use("/smartviewer", express.static(path.resolve("./smartviewer")));
 app.use("/catalog-pages", express.static(path.resolve("./catalog-pages")));
+app.use("/customer-assets", express.static(path.resolve("./customer-assets")));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -62,6 +65,30 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, CUSTOMER_ASSETS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
+  }
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: {
+    fileSize: 2 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Nur Bilddateien sind erlaubt"));
+    }
+
+    cb(null, true);
+  }
+});
 
 function adminAuth(req, res, next) {
   const authHeader = req.headers.authorization || "";
@@ -229,6 +256,16 @@ function buildStatusEntry(item, states, history) {
   };
 }
 
+function buildPublicCustomer(customer) {
+  if (!customer) return null;
+
+  return {
+    customer_number: customer.customer_number,
+    company_name: customer.company_name || "",
+    logo_url: customer.logo_url || ""
+  };
+}
+
 async function deleteRelatedFiles(item) {
   if (item?.pdf_url) {
     try {
@@ -277,6 +314,36 @@ app.get("/api/tags", adminAuth, async (req, res) => {
   );
 
   res.json(uniqueTags);
+});
+
+app.get("/api/viewer-settings/:catalogId", async (req, res) => {
+  const catalogId = String(req.params.catalogId || "").trim();
+
+  if (!catalogId) {
+    return res.status(400).json({ error: "catalogId ist erforderlich" });
+  }
+
+  const urls = await readJsonFile(URLS_FILE, []);
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const catalog = urls.find((item) => String(item.catalog_id || "") === catalogId);
+
+  if (!catalog) {
+    return res.json({
+      catalog_id: catalogId,
+      title: "",
+      customer: null
+    });
+  }
+
+  const customer = customers.find(
+    (entry) => entry.customer_number === catalog.customer_number
+  );
+
+  res.json({
+    catalog_id: catalogId,
+    title: catalog.title || catalog.name || "",
+    customer: buildPublicCustomer(customer)
+  });
 });
 
 app.post("/api/upload", adminAuth, upload.single("file"), async (req, res) => {
@@ -570,8 +637,54 @@ app.get("/api/customer/me", customerAuth, async (req, res) => {
   res.json({
     customer_number: customer.customer_number,
     company_name: customer.company_name || "",
+    logo_url: customer.logo_url || "",
     is_active: customer.is_active !== false
   });
+});
+
+app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Keine Logo-Datei hochgeladen" });
+    }
+
+    const customers = await readJsonFile(CUSTOMERS_FILE, []);
+    const index = customers.findIndex(
+      (entry) => entry.customer_number === req.customer.customer_number
+    );
+
+    if (index === -1) {
+      return res.status(404).json({ error: "Kunde nicht gefunden" });
+    }
+
+    const logoUrl = `${BASE_URL}/customer-assets/${req.file.filename}`;
+
+    customers[index] = {
+      ...customers[index],
+      logo_url: logoUrl,
+      updated_at: new Date().toISOString()
+    };
+
+    await writeJsonFile(CUSTOMERS_FILE, customers);
+
+    res.json({
+      success: true,
+      logo_url: logoUrl
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Logo konnte nicht gespeichert werden",
+      details: error.message
+    });
+  }
+});
+
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError || error.message === "Nur Bilddateien sind erlaubt") {
+    return res.status(400).json({ error: error.message });
+  }
+
+  next(error);
 });
 
 app.get("/api/customer/catalogs", customerAuth, async (req, res) => {
@@ -837,6 +950,7 @@ app.get("/api/customers", adminAuth, async (req, res) => {
       id: c.id,
       customer_number: c.customer_number,
       company_name: c.company_name || "",
+      logo_url: c.logo_url || "",
       is_active: c.is_active !== false,
       created_at: c.created_at || null,
       updated_at: c.updated_at || null
@@ -848,6 +962,7 @@ app.post("/api/customers", adminAuth, async (req, res) => {
   const {
     customer_number,
     company_name,
+    logo_url = "",
     password,
     is_active = true
   } = req.body;
@@ -890,6 +1005,7 @@ app.post("/api/customers", adminAuth, async (req, res) => {
     id: Date.now(),
     customer_number: finalCustomerNumber,
     company_name,
+    logo_url,
     password_hash: passwordHash,
     is_active,
     created_at: new Date().toISOString(),
@@ -903,6 +1019,7 @@ app.post("/api/customers", adminAuth, async (req, res) => {
     id: newCustomer.id,
     customer_number: newCustomer.customer_number,
     company_name: newCustomer.company_name,
+    logo_url: newCustomer.logo_url,
     is_active: newCustomer.is_active,
     created_at: newCustomer.created_at,
     updated_at: newCustomer.updated_at
@@ -913,6 +1030,7 @@ app.put("/api/customers/:id", adminAuth, async (req, res) => {
   const id = Number(req.params.id);
   const {
     company_name,
+    logo_url,
     password,
     is_active
   } = req.body;
@@ -938,6 +1056,8 @@ app.put("/api/customers/:id", adminAuth, async (req, res) => {
     ...existingCustomer,
     company_name:
       company_name !== undefined ? company_name : existingCustomer.company_name,
+    logo_url:
+      logo_url !== undefined ? logo_url : existingCustomer.logo_url || "",
     password_hash: passwordHash,
     is_active:
       typeof is_active === "boolean" ? is_active : existingCustomer.is_active,
@@ -950,6 +1070,7 @@ app.put("/api/customers/:id", adminAuth, async (req, res) => {
     id: customers[index].id,
     customer_number: customers[index].customer_number,
     company_name: customers[index].company_name,
+    logo_url: customers[index].logo_url || "",
     is_active: customers[index].is_active,
     created_at: customers[index].created_at,
     updated_at: customers[index].updated_at

@@ -19,6 +19,7 @@ Diese Roadmap haelt den aktuellen Produktstand und die naechsten sinnvollen Schr
 - Jeder Katalog kann zwei Anzeigewege haben:
   - PDF-Viewer: `/viewer/web/viewer.html?file=...`
   - SmartViewer: `/smartviewer/index.html?catalog=...`
+- Der SmartViewer unterstuetzt Kundenlogo, Titel, Startanimation und responsive Bedienung.
 - Das Backend ergaenzt fehlende SmartViewer-Felder aus `pdf_url`, wenn das Frontend sie nicht mitsendet.
 - Monitoring prueft gespeicherte URLs regelmaessig und kann E-Mails versenden.
 
@@ -37,6 +38,7 @@ Diese Roadmap haelt den aktuellen Produktstand und die naechsten sinnvollen Schr
 - Auf dem VPS liegen noch alte Ordner:
   - `/root/smartcatalog-monitor/viewer`
   - `/root/smartcatalog-monitor/flipbook`
+- Kundenassets liegen bewusst ausserhalb von Git unter `customer-assets/`.
 - Der neue PDF-Viewer braucht den alten `viewer/`-Ordner nicht mehr.
 - Der alte `flipbook/`-Pfad ist kein offizieller Anzeigeweg mehr.
 - Diese Ordner erst nach einem separaten Backup/Archivierungsschritt entfernen.

@@ -7,7 +7,7 @@ Monitoring und API fuer das SmartCatalog / ProductDataPortal Projekt.
 - `api.js`: Express API fuer Admin-Funktionen, Kundenlogin, Kataloge, Uploads und Requests
 - `monitor.js`: Hintergrundprozess, der gespeicherte URLs prueft und bei Fehlern E-Mails verschickt
 - `pdf-viewer/`: eigener PDF-Viewer fuer bestehende `/viewer/web/viewer.html?...` Links
-- `smartviewer/`: Statischer Viewer, der von der API ausgeliefert wird
+- `smartviewer/`: Statischer, responsiver Blaetterkatalog mit Branding und Startanimation
 
 ## Lokale Entwicklung
 
@@ -87,6 +87,8 @@ Die PDF-Ansicht nutzt intern `pdfjs-dist` aus `node_modules`. Dadurch ist der Vi
 
 Wenn beim Speichern eines Katalogs nur `pdf_url` uebergeben wird, erzeugt die API fehlende Smartviewer-Seiten automatisch und ergaenzt `catalog_id` und `flipbook_url`.
 
+Kundenlogos koennen ueber `POST /api/customer/logo` hochgeladen werden. Der SmartViewer laedt Logo, Kundennamen und Katalogtitel ueber `GET /api/viewer-settings/:catalogId`.
+
 Der alte Serverordner `/flipbook` ist nicht der offizielle Anzeigeweg. Neue Flipbook-Links sollen immer ueber `/smartviewer` laufen.
 
 Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:
@@ -102,6 +104,7 @@ Diese Dateien und Ordner gehoeren nicht in GitHub:
 - `.env`
 - `uploads/`
 - `catalog-pages/`
+- `customer-assets/`
 - `data-backups/`
 - `customers.json`
 - `requests.json`

@@ -9,6 +9,7 @@ node_modules/
 # Runtime data
 uploads/
 catalog-pages/
+customer-assets/
 data-backups/
 customers.json
 requests.json
