@@ -213,13 +213,14 @@
       position: absolute;
       inset: 0;
       z-index: 3;
-      display: none;
-      cursor: grab;
+      display: block;
+      cursor: default;
       touch-action: none;
     }
 
-    #viewer.zoomed #panLayer {
-      display: block;
+    #viewer.zoomed #panLayer,
+    #viewer.dragging #panLayer {
+      cursor: grab;
     }
 
     #viewer.dragging #panLayer {
@@ -487,7 +488,18 @@
   let touchSwipeStartY = 0;
   let touchSwipeStartTime = 0;
   let isPinching = false;
-  let resizeTimer = null;
+  let activePointers = new Map();
+  let gestureMode = "idle";
+  let gestureStartX = 0;
+  let gestureStartY = 0;
+  let gestureLastX = 0;
+  let gestureLastY = 0;
+  let pointerPinchDistance = 0;
+  let pointerPinchZoom = 1;
+  let pointerPinchCenterX = 0;
+  let pointerPinchCenterY = 0;
+  let pointerPinchPanX = 0;
+  let pointerPinchPanY = 0;
 
   if (!catalogId) {
     statusEl.innerText = "Kein Katalog angegeben.";
@@ -682,6 +694,21 @@
     }
   }
 
+  function movePan(clientX, clientY, event) {
+    const deltaX = clientX - gestureStartX;
+    const deltaY = clientY - gestureStartY;
+
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+      isDragging = true;
+      viewerEl.classList.add("dragging");
+    }
+
+    panX = startPanX + deltaX;
+    panY = startPanY + deltaY;
+    applyZoom();
+    event?.preventDefault();
+  }
+
   function endDrag(clientX = dragStartX, clientY = dragStartY, allowFlip = true) {
     const wasPointerDown = isPointerDown;
     const wasDragging = isDragging;
@@ -826,6 +853,124 @@
     updateNavigationState();
   }
 
+  function getPointerList() {
+    return Array.from(activePointers.values());
+  }
+
+  function getPointerCenter(points) {
+    return {
+      x: (points[0].x + points[1].x) / 2,
+      y: (points[0].y + points[1].y) / 2
+    };
+  }
+
+  function getPointerDistance(points) {
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  }
+
+  function startSingleGesture(point) {
+    gestureMode = "single";
+    isPointerDown = true;
+    isDragging = false;
+    gestureStartX = point.x;
+    gestureStartY = point.y;
+    gestureLastX = point.x;
+    gestureLastY = point.y;
+    startPanX = panX;
+    startPanY = panY;
+    gestureStartTime = Date.now();
+  }
+
+  function startPointerPinch() {
+    const points = getPointerList();
+    if (points.length < 2) return;
+
+    const center = getPointerCenter(points);
+    gestureMode = "pinch";
+    isPinching = true;
+    isPointerDown = false;
+    isDragging = false;
+    pointerPinchDistance = getPointerDistance(points);
+    pointerPinchZoom = zoomLevel;
+    pointerPinchCenterX = center.x;
+    pointerPinchCenterY = center.y;
+    pointerPinchPanX = panX;
+    pointerPinchPanY = panY;
+    suppressFlipUntil = Date.now() + 350;
+    updateNavigationState();
+  }
+
+  function movePointerPinch(event) {
+    const points = getPointerList();
+    if (points.length < 2 || !pointerPinchDistance) return;
+
+    const center = getPointerCenter(points);
+    const distance = getPointerDistance(points);
+    const nextZoom = Math.min(Math.max(pointerPinchZoom * (distance / pointerPinchDistance), 0.7), 2.8);
+    const startPoint = getViewerPoint(pointerPinchCenterX, pointerPinchCenterY);
+    const currentPoint = getViewerPoint(center.x, center.y);
+    const contentX = (startPoint.x - pointerPinchPanX) / pointerPinchZoom;
+    const contentY = (startPoint.y - pointerPinchPanY) / pointerPinchZoom;
+
+    zoomLevel = nextZoom;
+    panX = currentPoint.x - contentX * zoomLevel;
+    panY = currentPoint.y - contentY * zoomLevel;
+
+    if (!isZoomed()) {
+      panX = 0;
+      panY = 0;
+    }
+
+    applyZoom();
+    suppressFlipUntil = Date.now() + 350;
+    event.preventDefault();
+  }
+
+  function finishSingleGesture(point) {
+    const deltaX = point.x - gestureStartX;
+    const deltaY = point.y - gestureStartY;
+    const gestureTime = Date.now() - gestureStartTime;
+    const minSwipeDistance = Math.min(90, Math.max(36, viewerEl.clientWidth * 0.08));
+    const horizontalSwipe = Math.abs(deltaX) >= minSwipeDistance && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+    const intentionalSwipe = gestureTime < 1400 || Math.abs(deltaX) > minSwipeDistance * 1.7;
+
+    if (!isZoomed() && horizontalSwipe && intentionalSwipe && pageFlip) {
+      suppressFlipUntil = Date.now() + 350;
+      if (deltaX < 0) {
+        pageFlip.flipNext();
+      } else {
+        pageFlip.flipPrev();
+      }
+    }
+
+    isPointerDown = false;
+    viewerEl.classList.remove("dragging");
+    window.setTimeout(() => {
+      isDragging = false;
+    }, 80);
+  }
+
+  function finishPointerGesture(point) {
+    if (gestureMode === "pinch") {
+      endPinch();
+      if (activePointers.size === 1) {
+        const remainingPoint = getPointerList()[0];
+        startSingleGesture(remainingPoint);
+        if (!isZoomed()) {
+          gestureMode = "idle";
+          isPointerDown = false;
+        }
+        return;
+      }
+    } else if (gestureMode === "single" && point) {
+      finishSingleGesture(point);
+    }
+
+    if (activePointers.size === 0) {
+      gestureMode = "idle";
+    }
+  }
+
   viewerEl.addEventListener("wheel", (event) => {
     event.preventDefault();
 
@@ -833,88 +978,71 @@
     setZoomAt(zoomLevel + direction * 0.1, event.clientX, event.clientY);
   }, { passive: false });
 
-  viewerEl.addEventListener("touchstart", (event) => {
-    if (event.touches.length !== 2) return;
-
-    beginPinch(event.touches);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }, { passive: false, capture: true });
-
-  viewerEl.addEventListener("touchmove", (event) => {
-    if (!isPinching || event.touches.length !== 2) return;
-
-    movePinch(event.touches, event);
-    event.stopImmediatePropagation();
-  }, { passive: false, capture: true });
-
-  viewerEl.addEventListener("touchend", (event) => {
-    if (!isPinching) return;
-
-    if (event.touches.length < 2) {
-      endPinch();
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-  }, { passive: false, capture: true });
-
   panLayerEl.addEventListener("pointerdown", (event) => {
-    if (!isZoomed()) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
 
     panLayerEl.setPointerCapture?.(event.pointerId);
-    beginDrag(event.clientX, event.clientY);
+    activePointers.set(event.pointerId, {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY
+    });
+
+    if (activePointers.size === 1) {
+      startSingleGesture({ x: event.clientX, y: event.clientY });
+    } else if (activePointers.size === 2) {
+      startPointerPinch();
+    }
+
     event.preventDefault();
   });
 
   panLayerEl.addEventListener("pointermove", (event) => {
-    if (!isZoomed()) return;
-    moveDrag(event.clientX, event.clientY, event);
+    if (!activePointers.has(event.pointerId)) return;
+
+    activePointers.set(event.pointerId, {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY
+    });
+
+    if (gestureMode === "pinch") {
+      movePointerPinch(event);
+      return;
+    }
+
+    if (gestureMode === "single") {
+      gestureLastX = event.clientX;
+      gestureLastY = event.clientY;
+
+      if (isZoomed()) {
+        movePan(event.clientX, event.clientY, event);
+      } else {
+        const deltaX = event.clientX - gestureStartX;
+        const deltaY = event.clientY - gestureStartY;
+        if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1) {
+          event.preventDefault();
+        }
+      }
+    }
   });
 
   panLayerEl.addEventListener("pointerup", (event) => {
-    endDrag(event.clientX, event.clientY, false);
+    if (!activePointers.has(event.pointerId)) return;
+
+    const point = { x: event.clientX, y: event.clientY };
+    activePointers.delete(event.pointerId);
+    finishPointerGesture(point);
   });
 
   panLayerEl.addEventListener("pointercancel", () => {
-    endDrag(dragStartX, dragStartY, false);
+    activePointers.clear();
+    endPinch();
+    isPointerDown = false;
+    isDragging = false;
+    gestureMode = "idle";
+    viewerEl.classList.remove("dragging");
   });
-
-  panLayerEl.addEventListener("touchstart", (event) => {
-    if (!isZoomed()) return;
-
-    if (event.touches.length === 2) {
-      beginPinch(event.touches);
-      event.preventDefault();
-      return;
-    }
-
-    if (event.touches.length === 1) {
-      beginDrag(event.touches[0].clientX, event.touches[0].clientY);
-      event.preventDefault();
-    }
-  }, { passive: false });
-
-  panLayerEl.addEventListener("touchmove", (event) => {
-    if (!isZoomed() && !isPinching) return;
-
-    if (event.touches.length === 2) {
-      movePinch(event.touches, event);
-      return;
-    }
-
-    if (event.touches.length === 1) {
-      moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
-    }
-  }, { passive: false });
-
-  panLayerEl.addEventListener("touchend", (event) => {
-    if (event.touches.length < 2) endPinch();
-    if (event.touches.length === 0) {
-      const changedTouch = event.changedTouches[0];
-      endDrag(changedTouch?.clientX, changedTouch?.clientY, false);
-    }
-  }, { passive: false });
 
   async function imageExists(url) {
     try {
@@ -1021,9 +1149,9 @@
         showCover: false,
         usePortrait: size.isMobile,
         mobileScrollSupport: false,
-        useMouseEvents: true,
-        clickEventForward: true,
-        swipeDistance: 30,
+        useMouseEvents: false,
+        clickEventForward: false,
+        swipeDistance: 9999,
         flippingTime: 650,
         drawShadow: true,
         maxShadowOpacity: 0.35,
@@ -1045,9 +1173,8 @@
     }
   }
 
-  window.addEventListener("resize", () => {
-    window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => location.reload(), 220);
+  window.addEventListener("orientationchange", () => {
+    window.setTimeout(() => location.reload(), 450);
   });
 
   document.addEventListener("keydown", (event) => {
