@@ -18,6 +18,10 @@
       --accent: #2563eb;
       --accent-strong: #1d4ed8;
       --stage: #dfe3ea;
+      --control-bg: #14171f;
+      --control-bg-hover: #0b0d12;
+      --control-secondary: #eef2f7;
+      --control-secondary-hover: #e4e9f1;
       --shadow: 0 18px 55px rgba(15, 23, 42, 0.18);
       --toolbar-height: 70px;
     }
@@ -44,10 +48,10 @@
     #toolbar {
       min-height: var(--toolbar-height);
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+      grid-template-columns: minmax(220px, 1fr) auto minmax(300px, 1fr);
       align-items: center;
       gap: 16px;
-      padding: 10px 22px;
+      padding: 9px 18px;
       background: rgba(255, 255, 255, 0.94);
       border-bottom: 1px solid var(--line);
       box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
@@ -124,20 +128,22 @@
     button {
       height: 38px;
       min-width: 38px;
-      border: 1px solid transparent;
+      border: 1px solid rgba(15, 23, 42, 0.06);
       border-radius: 8px;
-      background: #171717;
+      background: var(--control-bg);
       color: #fff;
       cursor: pointer;
       font-size: 14px;
       font-weight: 700;
       line-height: 1;
-      transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+      transition: transform 120ms ease, background 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
     }
 
     button:hover {
-      background: #000;
+      background: var(--control-bg-hover);
       transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
     }
 
     button:active {
@@ -150,6 +156,17 @@
 
     .icon-button {
       padding: 0;
+    }
+
+    .secondary-button {
+      background: var(--control-secondary);
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .secondary-button:hover {
+      background: var(--control-secondary-hover);
+      box-shadow: none;
     }
 
     #viewer {
@@ -287,18 +304,26 @@
       }
 
       #toolbar {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr auto;
         gap: 8px;
         padding: 9px 12px;
       }
 
       #brand {
-        justify-content: center;
+        justify-content: flex-start;
       }
 
       #controls {
+        grid-column: 1 / -1;
         justify-content: center;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+      }
+
+      #controls::-webkit-scrollbar {
+        display: none;
       }
 
       #customerName {
@@ -311,7 +336,7 @@
 
       #pageInfo {
         min-width: auto;
-        order: 3;
+        justify-self: end;
       }
 
       .control-button {
@@ -333,6 +358,10 @@
       .control-label {
         display: none;
       }
+
+      .control-button {
+        min-width: 40px;
+      }
     }
   </style>
 </head>
@@ -352,12 +381,12 @@
     <div id="pageInfo">Seite - / -</div>
 
     <div id="controls">
-      <button class="control-button" type="button" onclick="prevPage()">&larr; <span class="control-label">Zurueck</span></button>
+      <button class="control-button" type="button" onclick="prevPage()">&larr; <span class="control-label">Zurück</span></button>
       <button class="control-button" type="button" onclick="nextPage()"><span class="control-label">Weiter</span> &rarr;</button>
       <button class="icon-button" type="button" title="Zoom kleiner" onclick="zoomOut()">-</button>
-      <button class="icon-button" type="button" title="Zoom groesser" onclick="zoomIn()">+</button>
-      <button class="control-button" type="button" onclick="resetZoom()">Reset</button>
-      <button class="control-button" type="button" onclick="toggleFullscreen()">Vollbild</button>
+      <button class="icon-button" type="button" title="Zoom größer" onclick="zoomIn()">+</button>
+      <button class="control-button secondary-button" type="button" onclick="resetZoom()">Reset</button>
+      <button class="control-button secondary-button" type="button" onclick="toggleFullscreen()">Vollbild</button>
     </div>
   </header>
 
@@ -519,6 +548,7 @@
 
   function moveDrag(clientX, clientY, event) {
     if (!isPointerDown) return;
+    if (zoomLevel <= 1.02) return;
 
     const deltaX = clientX - dragStartX;
     const deltaY = clientY - dragStartY;

@@ -266,6 +266,21 @@ function buildPublicCustomer(customer) {
   };
 }
 
+async function deleteCustomerAsset(assetUrl) {
+  if (!assetUrl || !assetUrl.includes("/customer-assets/")) return;
+
+  const fileName = assetUrl.split("/customer-assets/")[1];
+  if (!fileName) return;
+
+  try {
+    await fs.unlink(path.join(CUSTOMER_ASSETS_DIR, fileName));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn("Altes Kundenlogo konnte nicht geloescht werden:", error.message);
+    }
+  }
+}
+
 async function deleteRelatedFiles(item) {
   if (item?.pdf_url) {
     try {
@@ -658,6 +673,7 @@ app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (r
     }
 
     const logoUrl = `${BASE_URL}/customer-assets/${req.file.filename}`;
+    const previousLogoUrl = customers[index].logo_url || "";
 
     customers[index] = {
       ...customers[index],
@@ -666,6 +682,7 @@ app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (r
     };
 
     await writeJsonFile(CUSTOMERS_FILE, customers);
+    await deleteCustomerAsset(previousLogoUrl);
 
     res.json({
       success: true,

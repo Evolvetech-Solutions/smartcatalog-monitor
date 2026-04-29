@@ -124,6 +124,8 @@ Authorization: Bearer <CUSTOMER_JWT>
 logo=<image file>
 ```
 
+Beim Hochladen eines neuen Logos ersetzt die API das bisherige Kundenlogo und entfernt die alte Datei aus `customer-assets/`.
+
 ## Wichtige Datenfelder
 
 Katalog:
