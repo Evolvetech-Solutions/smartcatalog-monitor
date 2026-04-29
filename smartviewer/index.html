@@ -526,11 +526,15 @@
   }
 
   function nextPage() {
-    if (pageFlip && !isZoomed() && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipNext();
+    if (!pageFlip || isDragging || Date.now() < suppressFlipUntil) return;
+    if (isZoomed()) resetZoom();
+    pageFlip.flipNext();
   }
 
   function prevPage() {
-    if (pageFlip && !isZoomed() && !isDragging && Date.now() > suppressFlipUntil) pageFlip.flipPrev();
+    if (!pageFlip || isDragging || Date.now() < suppressFlipUntil) return;
+    if (isZoomed()) resetZoom();
+    pageFlip.flipPrev();
   }
 
   function isZoomed() {
@@ -546,11 +550,10 @@
   }
 
   function updateNavigationState() {
-    const disabled = isZoomed() || isPinching;
-    prevButtonEl.disabled = disabled;
-    nextButtonEl.disabled = disabled;
-    prevButtonEl.title = disabled ? "Zum Blättern zuerst Zoom zurücksetzen" : "Vorherige Seite";
-    nextButtonEl.title = disabled ? "Zum Blättern zuerst Zoom zurücksetzen" : "Nächste Seite";
+    prevButtonEl.disabled = isPinching;
+    nextButtonEl.disabled = isPinching;
+    prevButtonEl.title = isZoomed() ? "Zoom zurücksetzen und vorherige Seite öffnen" : "Vorherige Seite";
+    nextButtonEl.title = isZoomed() ? "Zoom zurücksetzen und nächste Seite öffnen" : "Nächste Seite";
   }
 
   function getViewerPoint(clientX, clientY) {
@@ -831,7 +834,7 @@
       beginDrag(event.touches[0].clientX, event.touches[0].clientY);
       if (isZoomed()) suppressFlipUntil = Date.now() + 350;
     }
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   viewerEl.addEventListener("touchmove", (event) => {
     if (event.touches.length === 2) {
@@ -843,7 +846,7 @@
       updateTouchSwipe(event.touches[0], event);
       moveDrag(event.touches[0].clientX, event.touches[0].clientY, event);
     }
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   viewerEl.addEventListener("touchend", (event) => {
     const wasPinching = isPinching;
@@ -861,16 +864,7 @@
       }
       endDrag(changedTouch?.clientX, changedTouch?.clientY, false);
     }
-  }, { passive: false });
-
-  ["pointerdown", "mousedown", "touchstart", "click"].forEach((eventName) => {
-    bookEl.addEventListener(eventName, (event) => {
-      if (isZoomed() || Date.now() < suppressFlipUntil) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    }, true);
-  });
+  }, { passive: false, capture: true });
 
   viewerEl.addEventListener("click", (event) => {
     if (isZoomed() || isDragging || Date.now() < suppressFlipUntil) {
