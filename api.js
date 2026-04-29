@@ -124,6 +124,12 @@ function buildFlipbookUrl(catalogId) {
   return `${BASE_URL}/smartviewer/index.html?catalog=${catalogId}`;
 }
 
+function getUploadPathFromPdfUrl(pdfUrl) {
+  if (!pdfUrl || !pdfUrl.includes("/uploads/")) return "";
+  const fileName = decodeURIComponent(pdfUrl.split("/uploads/")[1] || "");
+  return fileName ? path.join("./uploads", fileName) : "";
+}
+
 async function generateCatalogPages(pdfPath, catalogId) {
   const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
   await fs.mkdir(outputDir, { recursive: true });
@@ -152,6 +158,41 @@ async function generateCatalogPages(pdfPath, catalogId) {
   return {
     catalog_id: String(catalogId),
     pages
+  };
+}
+
+async function ensureSmartviewerFields({ id, pdfUrl, catalogId, flipbookUrl }) {
+  const finalCatalogId = catalogId || (pdfUrl ? String(id) : "");
+
+  if (!pdfUrl || !finalCatalogId) {
+    return {
+      catalog_id: finalCatalogId,
+      flipbook_url: flipbookUrl || ""
+    };
+  }
+
+  const outputDir = `${CATALOG_PAGES_DIR}/${finalCatalogId}`;
+  const pdfPath = getUploadPathFromPdfUrl(pdfUrl);
+  let hasPages = false;
+
+  try {
+    const existingPages = await fs.readdir(outputDir).catch(() => []);
+    hasPages = existingPages.some((file) => file.endsWith(".jpg"));
+
+    if (!hasPages && pdfPath) {
+      await fs.access(pdfPath);
+      await generateCatalogPages(pdfPath, finalCatalogId);
+      hasPages = true;
+    }
+  } catch (error) {
+    console.warn(
+      `Smartviewer-Seiten konnten nicht automatisch erzeugt werden: ${error.message}`
+    );
+  }
+
+  return {
+    catalog_id: hasPages || flipbookUrl ? finalCatalogId : "",
+    flipbook_url: flipbookUrl || (hasPages ? buildFlipbookUrl(finalCatalogId) : "")
   };
 }
 
@@ -301,8 +342,15 @@ app.post("/api/urls", adminAuth, async (req, res) => {
   const finalName = name || title || "Ohne Titel";
   const finalPdfUrl = pdf_url || "";
   const finalViewerUrl = viewer_url || (finalPdfUrl ? buildViewerUrl(finalPdfUrl) : "");
-  const finalCatalogId = catalog_id || "";
-  const finalFlipbookUrl = flipbook_url || buildFlipbookUrl(finalCatalogId);
+  const id = Date.now();
+  const smartviewerFields = await ensureSmartviewerFields({
+    id,
+    pdfUrl: finalPdfUrl,
+    catalogId: catalog_id || "",
+    flipbookUrl: flipbook_url || ""
+  });
+  const finalCatalogId = smartviewerFields.catalog_id;
+  const finalFlipbookUrl = smartviewerFields.flipbook_url;
   const finalUrl = url || finalFlipbookUrl || finalViewerUrl || finalPdfUrl;
 
   if (!finalUrl) {
@@ -317,7 +365,7 @@ app.post("/api/urls", adminAuth, async (req, res) => {
   const urls = await readJsonFile(URLS_FILE, []);
 
   const newItem = {
-    id: Date.now(),
+    id,
     name: finalName,
     title: finalName,
     customer_number: finalCustomerNumber,
@@ -390,10 +438,16 @@ app.put("/api/urls/:id", adminAuth, async (req, res) => {
   const finalCatalogId =
     catalog_id !== undefined ? catalog_id : existingItem.catalog_id || "";
 
-  const finalFlipbookUrl =
-    flipbook_url !== undefined
-      ? flipbook_url
-      : existingItem.flipbook_url || buildFlipbookUrl(finalCatalogId);
+  const smartviewerFields = await ensureSmartviewerFields({
+    id,
+    pdfUrl: finalPdfUrl,
+    catalogId: finalCatalogId,
+    flipbookUrl:
+      flipbook_url !== undefined ? flipbook_url : existingItem.flipbook_url || ""
+  });
+
+  const resolvedCatalogId = smartviewerFields.catalog_id;
+  const finalFlipbookUrl = smartviewerFields.flipbook_url;
 
   const finalUrl = url || finalFlipbookUrl || finalViewerUrl || existingItem.url;
 
@@ -405,7 +459,7 @@ app.put("/api/urls/:id", adminAuth, async (req, res) => {
     url: finalUrl,
     pdf_url: finalPdfUrl,
     viewer_url: finalViewerUrl,
-    catalog_id: finalCatalogId,
+    catalog_id: resolvedCatalogId,
     flipbook_url: finalFlipbookUrl,
     linkly_url: linkly_url !== undefined ? linkly_url : existingItem.linkly_url,
     tags: tags !== undefined ? normalizeTags(tags) : normalizeTags(existingItem.tags),
@@ -584,8 +638,15 @@ app.post("/api/customer/catalogs", customerAuth, async (req, res) => {
   const finalName = name || title || "Ohne Titel";
   const finalPdfUrl = pdf_url || "";
   const finalViewerUrl = viewer_url || (finalPdfUrl ? buildViewerUrl(finalPdfUrl) : "");
-  const finalCatalogId = catalog_id || "";
-  const finalFlipbookUrl = flipbook_url || buildFlipbookUrl(finalCatalogId);
+  const id = Date.now();
+  const smartviewerFields = await ensureSmartviewerFields({
+    id,
+    pdfUrl: finalPdfUrl,
+    catalogId: catalog_id || "",
+    flipbookUrl: flipbook_url || ""
+  });
+  const finalCatalogId = smartviewerFields.catalog_id;
+  const finalFlipbookUrl = smartviewerFields.flipbook_url;
   const finalUrl = url || finalFlipbookUrl || finalViewerUrl || finalPdfUrl;
 
   if (!finalUrl) {
@@ -600,7 +661,7 @@ app.post("/api/customer/catalogs", customerAuth, async (req, res) => {
   const urls = await readJsonFile(URLS_FILE, []);
 
   const newItem = {
-    id: Date.now(),
+    id,
     name: finalName,
     title: finalName,
     customer_number: req.customer.customer_number,
@@ -664,10 +725,16 @@ app.put("/api/customer/catalogs/:id", customerAuth, async (req, res) => {
   const finalCatalogId =
     catalog_id !== undefined ? catalog_id : existingItem.catalog_id || "";
 
-  const finalFlipbookUrl =
-    flipbook_url !== undefined
-      ? flipbook_url
-      : existingItem.flipbook_url || buildFlipbookUrl(finalCatalogId);
+  const smartviewerFields = await ensureSmartviewerFields({
+    id,
+    pdfUrl: finalPdfUrl,
+    catalogId: finalCatalogId,
+    flipbookUrl:
+      flipbook_url !== undefined ? flipbook_url : existingItem.flipbook_url || ""
+  });
+
+  const resolvedCatalogId = smartviewerFields.catalog_id;
+  const finalFlipbookUrl = smartviewerFields.flipbook_url;
 
   const finalUrl = url || finalFlipbookUrl || finalViewerUrl || existingItem.url;
 
@@ -679,7 +746,7 @@ app.put("/api/customer/catalogs/:id", customerAuth, async (req, res) => {
     url: finalUrl,
     pdf_url: finalPdfUrl,
     viewer_url: finalViewerUrl,
-    catalog_id: finalCatalogId,
+    catalog_id: resolvedCatalogId,
     flipbook_url: finalFlipbookUrl,
     tags: tags !== undefined ? normalizeTags(tags) : normalizeTags(existingItem.tags),
     error_text:

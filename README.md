@@ -85,6 +85,8 @@ Ein Katalog kann aktuell auf zwei Arten angezeigt werden:
 
 Die PDF-Ansicht nutzt intern `pdfjs-dist` aus `node_modules`. Dadurch ist der Viewer reproduzierbar installierbar und muss nicht als grosser manuell gepflegter `viewer/`-Ordner ins Repo.
 
+Wenn beim Speichern eines Katalogs nur `pdf_url` uebergeben wird, erzeugt die API fehlende Smartviewer-Seiten automatisch und ergaenzt `catalog_id` und `flipbook_url`.
+
 Der alte Serverordner `/flipbook` ist nicht der offizielle Anzeigeweg. Neue Flipbook-Links sollen immer ueber `/smartviewer` laufen.
 
 Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:

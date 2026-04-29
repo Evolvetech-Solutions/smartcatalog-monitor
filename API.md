@@ -33,6 +33,8 @@ Jeder Katalog kann zwei relevante Links haben:
 - `viewer_url`: normale PDF-Anzeige ueber PDF.js
 - `flipbook_url`: Blaetterkatalog ueber `smartviewer`
 
+Wenn `POST /api/urls` oder `POST /api/customer/catalogs` nur eine `pdf_url` bekommt, erzeugt die API fehlende Smartviewer-Seiten automatisch und setzt `catalog_id` sowie `flipbook_url`.
+
 Aktueller Standard fuer den Blaetterkatalog:
 
 ```text
