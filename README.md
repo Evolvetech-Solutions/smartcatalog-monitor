@@ -100,11 +100,14 @@ Diese Dateien und Ordner gehoeren nicht in GitHub:
 - `.env`
 - `uploads/`
 - `catalog-pages/`
+- `data-backups/`
 - `customers.json`
 - `requests.json`
 - `history.json`
 - `state.json`
 - `urls.json`
+
+JSON-Laufzeitdaten werden atomar geschrieben: Vor dem Ersetzen einer Datei wird eine Backup-Kopie unter `data-backups/` abgelegt. Das schuetzt vor halb geschriebenen JSON-Dateien bei Prozessabbruechen.
 
 ## Deployment
 

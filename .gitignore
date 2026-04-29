@@ -9,11 +9,13 @@ node_modules/
 # Runtime data
 uploads/
 catalog-pages/
+data-backups/
 customers.json
 requests.json
 history.json
 state.json
 urls.json
+*.tmp
 
 # Logs and PM2/runtime
 *.log
