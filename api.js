@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { readJsonFile, writeJsonFile } from "./json-store.js";
 
 dotenv.config();
 
@@ -88,19 +89,6 @@ function customerAuth(req, res, next) {
   } catch {
     return res.status(401).json({ error: "Invalid customer token" });
   }
-}
-
-async function readJsonFile(pathValue, fallback) {
-  try {
-    const raw = await fs.readFile(pathValue, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJsonFile(pathValue, data) {
-  await fs.writeFile(pathValue, JSON.stringify(data, null, 2), "utf8");
 }
 
 function normalizeTags(tags) {

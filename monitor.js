@@ -1,7 +1,7 @@
-import fs from "fs/promises";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import { chromium } from "playwright";
+import { readJsonFile, writeJsonFile } from "./json-store.js";
 
 dotenv.config();
 
@@ -27,19 +27,6 @@ function mailConfigured() {
       MAIL_FROM &&
       MAIL_TO
   );
-}
-
-async function readJsonFile(path, fallback) {
-  try {
-    const raw = await fs.readFile(path, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJsonFile(path, data) {
-  await fs.writeFile(path, JSON.stringify(data, null, 2), "utf8");
 }
 
 async function sendMail(subject, text) {

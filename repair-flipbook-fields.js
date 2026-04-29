@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
+import { readJsonFile, writeJsonFile } from "./json-store.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -9,19 +10,6 @@ const BASE_URL = "https://api.evolvetech-solutions.de";
 const URLS_FILE = "./urls.json";
 const UPLOADS_DIR = "./uploads";
 const CATALOG_PAGES_DIR = "./catalog-pages";
-
-async function readJsonFile(file, fallback) {
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJsonFile(file, data) {
-  await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
-}
 
 function getFilenameFromPdfUrl(pdfUrl) {
   if (!pdfUrl || !pdfUrl.includes("/uploads/")) return "";

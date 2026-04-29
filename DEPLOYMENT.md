@@ -75,11 +75,14 @@ Nicht committen:
 - `.env`
 - `uploads/`
 - `catalog-pages/`
+- `data-backups/`
 - `customers.json`
 - `requests.json`
 - `history.json`
 - `state.json`
 - `urls.json`
+
+Die JSON-Dateien werden atomar geschrieben. Vor jedem erfolgreichen Ersetzen wird eine Backup-Kopie unter `data-backups/` angelegt.
 
 Vor groesseren Aenderungen ein Server-Backup erstellen:
 
