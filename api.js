@@ -25,6 +25,7 @@ const STATE_FILE = "./state.json";
 const HISTORY_FILE = "./history.json";
 const CUSTOMERS_FILE = "./customers.json";
 const REQUESTS_FILE = "./requests.json";
+const CATALOG_HOTSPOTS_FILE = "./catalog-hotspots.json";
 
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
@@ -50,6 +51,7 @@ app.use("/pdfjs/build", express.static(path.resolve("./node_modules/pdfjs-dist/b
 app.use("/pdfjs/cmaps", express.static(path.resolve("./node_modules/pdfjs-dist/cmaps")));
 app.use("/pdfjs/standard_fonts", express.static(path.resolve("./node_modules/pdfjs-dist/standard_fonts")));
 app.use("/smartviewer", express.static(path.resolve("./smartviewer")));
+app.use("/smartviewer-v2", express.static(path.resolve("./smartviewer-v2")));
 app.use("/catalog-pages", express.static(path.resolve("./catalog-pages")));
 app.use("/customer-assets", express.static(path.resolve("./customer-assets")));
 
@@ -151,6 +153,11 @@ function buildFlipbookUrl(catalogId) {
   return `${BASE_URL}/smartviewer/index.html?catalog=${catalogId}`;
 }
 
+function buildSmartviewerV2Url(catalogId) {
+  if (!catalogId) return "";
+  return `${BASE_URL}/smartviewer-v2/index.html?catalog=${catalogId}`;
+}
+
 function getUploadPathFromPdfUrl(pdfUrl) {
   if (!pdfUrl || !pdfUrl.includes("/uploads/")) return "";
   const fileName = decodeURIComponent(pdfUrl.split("/uploads/")[1] || "");
@@ -239,6 +246,9 @@ function buildStatusEntry(item, states, history) {
     flipbook_url:
       item.flipbook_url ||
       (item.catalog_id ? buildFlipbookUrl(item.catalog_id) : ""),
+    smartviewer_v2_url:
+      item.smartviewer_v2_url ||
+      (item.catalog_id ? buildSmartviewerV2Url(item.catalog_id) : ""),
     linkly_url: item.linkly_url || "",
     tags: normalizeTags(item.tags),
     error_text:
@@ -254,6 +264,96 @@ function buildStatusEntry(item, states, history) {
       : "Nie geprüft",
     history: historyEntry
   };
+}
+
+function normalizeHotspotPosition(position = {}) {
+  const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+
+  return {
+    left: clamp(position.left),
+    top: clamp(position.top),
+    width: clamp(position.width),
+    height: clamp(position.height)
+  };
+}
+
+function normalizeHotspots(hotspots) {
+  if (!Array.isArray(hotspots)) return [];
+
+  const allowedTypes = new Set(["link", "product", "page", "video", "note"]);
+
+  return hotspots.slice(0, 500).map((hotspot) => {
+    const type = allowedTypes.has(hotspot.type) ? hotspot.type : "link";
+    const page = Math.max(1, Number.parseInt(hotspot.page, 10) || 1);
+    const normalized = {
+      id: String(hotspot.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      type,
+      page,
+      title: String(hotspot.title || "").trim(),
+      label: String(hotspot.label || "").trim(),
+      show_icon: hotspot.show_icon !== false,
+      position: normalizeHotspotPosition(hotspot.position),
+      updated_at: new Date().toISOString()
+    };
+
+    if (type === "link" || type === "video") {
+      normalized.url = String(hotspot.url || "").trim();
+      normalized.target = hotspot.target === "_self" ? "_self" : "_blank";
+    }
+
+    if (type === "page") {
+      normalized.target_page = Math.max(1, Number.parseInt(hotspot.target_page, 10) || page);
+    }
+
+    if (type === "product") {
+      normalized.product = {
+        name: String(hotspot.product?.name || hotspot.title || "").trim(),
+        price: String(hotspot.product?.price || "").trim(),
+        description: String(hotspot.product?.description || "").trim(),
+        image_url: String(hotspot.product?.image_url || "").trim(),
+        url: String(hotspot.product?.url || hotspot.url || "").trim(),
+        sku: String(hotspot.product?.sku || "").trim()
+      };
+    }
+
+    return normalized;
+  });
+}
+
+async function readCatalogHotspots(catalogId) {
+  const allHotspots = await readJsonFile(CATALOG_HOTSPOTS_FILE, {});
+  return normalizeHotspots(allHotspots[String(catalogId)] || []);
+}
+
+async function writeCatalogHotspots(catalogId, hotspots) {
+  const allHotspots = await readJsonFile(CATALOG_HOTSPOTS_FILE, {});
+  allHotspots[String(catalogId)] = normalizeHotspots(hotspots);
+  await writeJsonFile(CATALOG_HOTSPOTS_FILE, allHotspots);
+  return allHotspots[String(catalogId)];
+}
+
+async function getCatalogPages(catalogId) {
+  const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
+  const files = await fs.readdir(outputDir).catch(() => []);
+
+  return files
+    .filter((file) => file.toLowerCase().endsWith(".jpg"))
+    .sort((a, b) => {
+      const numA = Number(a.match(/\d+/)?.[0] || 0);
+      const numB = Number(b.match(/\d+/)?.[0] || 0);
+      return numA - numB;
+    })
+    .map((file, index) => ({
+      page: index + 1,
+      image_url: `${BASE_URL}/catalog-pages/${catalogId}/${file}`
+    }));
+}
+
+async function findCustomerCatalogById(customerNumber, id) {
+  const urls = await readJsonFile(URLS_FILE, []);
+  return urls.find(
+    (item) => item.id === Number(id) && item.customer_number === customerNumber
+  );
 }
 
 function buildPublicCustomer(customer) {
@@ -301,6 +401,16 @@ async function deleteRelatedFiles(item) {
       });
     } catch (err) {
       console.warn("Catalog-Pages konnten nicht gelöscht werden:", err.message);
+    }
+
+    try {
+      const allHotspots = await readJsonFile(CATALOG_HOTSPOTS_FILE, {});
+      if (allHotspots[String(item.catalog_id)]) {
+        delete allHotspots[String(item.catalog_id)];
+        await writeJsonFile(CATALOG_HOTSPOTS_FILE, allHotspots);
+      }
+    } catch (err) {
+      console.warn("Katalog-Hotspots konnten nicht gelöscht werden:", err.message);
     }
   }
 }
@@ -361,6 +471,47 @@ app.get("/api/viewer-settings/:catalogId", async (req, res) => {
   });
 });
 
+app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
+  const catalogId = String(req.params.catalogId || "").trim();
+
+  if (!catalogId) {
+    return res.status(400).json({ error: "catalogId ist erforderlich" });
+  }
+
+  const urls = await readJsonFile(URLS_FILE, []);
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const catalog = urls.find((item) => String(item.catalog_id || "") === catalogId);
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  const customer = customers.find(
+    (entry) => entry.customer_number === catalog.customer_number
+  );
+  const pages = await getCatalogPages(catalogId);
+  const hotspots = await readCatalogHotspots(catalogId);
+
+  res.json({
+    catalog_id: catalogId,
+    id: catalog.id,
+    title: catalog.title || catalog.name || "",
+    pdf_url: catalog.pdf_url || "",
+    viewer_url: catalog.viewer_url || "",
+    legacy_smartviewer_url: catalog.flipbook_url || buildFlipbookUrl(catalogId),
+    smartviewer_v2_url: buildSmartviewerV2Url(catalogId),
+    customer: buildPublicCustomer(customer),
+    pages,
+    hotspots,
+    features: {
+      swipe: true,
+      pinch_zoom: true,
+      pan_when_zoomed: true,
+      hotspots: true
+    }
+  });
+});
+
 app.post("/api/upload", adminAuth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -373,6 +524,7 @@ app.post("/api/upload", adminAuth, upload.single("file"), async (req, res) => {
 
     const generated = await generateCatalogPages(req.file.path, catalogId);
     const flipbookUrl = buildFlipbookUrl(catalogId);
+    const smartviewerV2Url = buildSmartviewerV2Url(catalogId);
 
     res.json({
       message: "Upload erfolgreich",
@@ -381,6 +533,7 @@ app.post("/api/upload", adminAuth, upload.single("file"), async (req, res) => {
       viewer_url: viewerUrl,
       catalog_id: String(catalogId),
       flipbook_url: flipbookUrl,
+      smartviewer_v2_url: smartviewerV2Url,
       pages: generated.pages,
       filename: req.file.filename,
       originalname: req.file.originalname
@@ -433,6 +586,7 @@ app.post("/api/urls", adminAuth, async (req, res) => {
   });
   const finalCatalogId = smartviewerFields.catalog_id;
   const finalFlipbookUrl = smartviewerFields.flipbook_url;
+  const finalSmartviewerV2Url = finalCatalogId ? buildSmartviewerV2Url(finalCatalogId) : "";
   const finalUrl = url || finalFlipbookUrl || finalViewerUrl || finalPdfUrl;
 
   if (!finalUrl) {
@@ -456,6 +610,7 @@ app.post("/api/urls", adminAuth, async (req, res) => {
     viewer_url: finalViewerUrl,
     catalog_id: finalCatalogId,
     flipbook_url: finalFlipbookUrl,
+    smartviewer_v2_url: finalSmartviewerV2Url,
     linkly_url: linkly_url || "",
     tags: normalizeTags(tags),
     error_text: finalErrorText,
@@ -530,6 +685,7 @@ app.put("/api/urls/:id", adminAuth, async (req, res) => {
 
   const resolvedCatalogId = smartviewerFields.catalog_id;
   const finalFlipbookUrl = smartviewerFields.flipbook_url;
+  const finalSmartviewerV2Url = resolvedCatalogId ? buildSmartviewerV2Url(resolvedCatalogId) : "";
 
   const finalUrl = url || finalFlipbookUrl || finalViewerUrl || existingItem.url;
 
@@ -543,6 +699,7 @@ app.put("/api/urls/:id", adminAuth, async (req, res) => {
     viewer_url: finalViewerUrl,
     catalog_id: resolvedCatalogId,
     flipbook_url: finalFlipbookUrl,
+    smartviewer_v2_url: finalSmartviewerV2Url,
     linkly_url: linkly_url !== undefined ? linkly_url : existingItem.linkly_url,
     tags: tags !== undefined ? normalizeTags(tags) : normalizeTags(existingItem.tags),
     error_text:
@@ -735,6 +892,7 @@ app.post("/api/customer/upload", customerAuth, upload.single("file"), async (req
       viewer_url: viewerUrl,
       catalog_id: String(catalogId),
       flipbook_url: flipbookUrl,
+      smartviewer_v2_url: smartviewerV2Url,
       pages: generated.pages,
       filename: req.file.filename,
       originalname: req.file.originalname
@@ -800,6 +958,7 @@ app.post("/api/customer/catalogs", customerAuth, async (req, res) => {
     viewer_url: finalViewerUrl,
     catalog_id: finalCatalogId,
     flipbook_url: finalFlipbookUrl,
+    smartviewer_v2_url: finalCatalogId ? buildSmartviewerV2Url(finalCatalogId) : "",
     linkly_url: "",
     tags: normalizeTags(tags),
     error_text: finalErrorText,
@@ -878,6 +1037,7 @@ app.put("/api/customer/catalogs/:id", customerAuth, async (req, res) => {
     viewer_url: finalViewerUrl,
     catalog_id: resolvedCatalogId,
     flipbook_url: finalFlipbookUrl,
+    smartviewer_v2_url: resolvedCatalogId ? buildSmartviewerV2Url(resolvedCatalogId) : "",
     tags: tags !== undefined ? normalizeTags(tags) : normalizeTags(existingItem.tags),
     error_text:
       error_text ||
@@ -898,6 +1058,55 @@ app.put("/api/customer/catalogs/:id", customerAuth, async (req, res) => {
 
   await writeJsonFile(URLS_FILE, urls);
   res.json(urls[index]);
+});
+
+app.get("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) => {
+  const catalog = await findCustomerCatalogById(
+    req.customer.customer_number,
+    req.params.id
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  if (!catalog.catalog_id) {
+    return res.status(400).json({ error: "Katalog hat keine catalog_id" });
+  }
+
+  const hotspots = await readCatalogHotspots(catalog.catalog_id);
+
+  res.json({
+    catalog_id: catalog.catalog_id,
+    catalog_title: catalog.title || catalog.name || "",
+    hotspots
+  });
+});
+
+app.put("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) => {
+  const catalog = await findCustomerCatalogById(
+    req.customer.customer_number,
+    req.params.id
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  if (!catalog.catalog_id) {
+    return res.status(400).json({ error: "Katalog hat keine catalog_id" });
+  }
+
+  const hotspots = await writeCatalogHotspots(
+    catalog.catalog_id,
+    req.body.hotspots || []
+  );
+
+  res.json({
+    success: true,
+    catalog_id: catalog.catalog_id,
+    hotspots
+  });
 });
 
 app.delete("/api/customer/catalogs/:id", customerAuth, async (req, res) => {

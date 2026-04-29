@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SmartCatalog Viewer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --surface: #ffffff;
+      --surface-soft: #f7f9fc;
+      --ink: #101828;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --brand: #2563eb;
+      --brand-strong: #1d4ed8;
+      --dark: #101114;
+      --shadow: 0 22px 70px rgba(15, 23, 42, 0.18);
+      --toolbar-height: 68px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, sans-serif;
+      overscroll-behavior: none;
+    }
+
+    body {
+      display: grid;
+      grid-template-rows: var(--toolbar-height) 1fr;
+    }
+
+    #toolbar {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) auto minmax(220px, 1fr);
+      align-items: center;
+      gap: 14px;
+      padding: 9px 16px;
+      background: rgba(255, 255, 255, 0.95);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+      z-index: 20;
+      backdrop-filter: blur(12px);
+    }
+
+    #brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #logoWrap {
+      width: 44px;
+      height: 44px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      flex: 0 0 auto;
+    }
+
+    #logo {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    #titleBlock {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    #customerName,
+    #catalogTitle {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #customerName {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    #catalogTitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #pageInfo {
+      min-width: 116px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    #controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    button {
+      height: 38px;
+      min-width: 38px;
+      border: 1px solid rgba(15, 23, 42, 0.06);
+      border-radius: 8px;
+      background: var(--dark);
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+      box-shadow: 0 7px 16px rgba(15, 23, 42, 0.14);
+      transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover {
+      background: #050608;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .control-button {
+      padding: 0 12px;
+    }
+
+    .icon-button {
+      padding: 0;
+    }
+
+    .secondary-button {
+      background: #eef2f7;
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .secondary-button:hover {
+      background: #e3e9f2;
+    }
+
+    #viewer {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top, rgba(255,255,255,0.58), transparent 48%),
+        var(--bg);
+      touch-action: none;
+      user-select: none;
+    }
+
+    #stage {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    #stage.dragging {
+      cursor: grabbing;
+    }
+
+    #spread {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      transform-origin: center center;
+      will-change: transform;
+      filter: drop-shadow(var(--shadow));
+    }
+
+    .page {
+      position: relative;
+      overflow: hidden;
+      background: #fff;
+      flex: 0 0 auto;
+    }
+
+    .page img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
+    .hotspot {
+      position: absolute;
+      border: 2px solid rgba(37, 99, 235, 0);
+      border-radius: 8px;
+      background: rgba(37, 99, 235, 0);
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .hotspot::after {
+      content: "";
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      background: var(--brand);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.32);
+      opacity: 0;
+      transform: scale(0.72);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    #viewer.hotspots-visible .hotspot {
+      background: rgba(37, 99, 235, 0.10);
+      border-color: rgba(37, 99, 235, 0.46);
+    }
+
+    #viewer.hotspots-visible .hotspot::after {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    #loading {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at center, rgba(255,255,255,0.98), rgba(241,245,249,0.96)),
+        var(--surface-soft);
+      transition: opacity 320ms ease, visibility 320ms ease;
+    }
+
+    #loading.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #loadingPanel {
+      width: min(420px, calc(100vw - 40px));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      text-align: center;
+    }
+
+    #loadingLogoWrap {
+      width: 84px;
+      height: 84px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+    }
+
+    #loadingLogo {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    #loadingTitle {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    #loadingText {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    #progressTrack {
+      width: 100%;
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #d8dee9;
+    }
+
+    #progressBar {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--brand), var(--brand-strong));
+      transition: width 220ms ease;
+    }
+
+    #drawer {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      z-index: 60;
+      width: min(440px, calc(100vw - 24px));
+      max-height: min(420px, calc(100vh - 120px));
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.98);
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+      transform: translate(-50%, calc(100% + 34px));
+      transition: transform 220ms ease;
+      visibility: hidden;
+    }
+
+    #drawer.open {
+      visibility: visible;
+      transform: translate(-50%, 0);
+    }
+
+    #drawerHeader {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    #drawerTitle {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    #drawerBody {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    #drawerActions {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    #drawerActions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 8px;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    @media (max-width: 860px) {
+      :root {
+        --toolbar-height: 112px;
+      }
+
+      #toolbar {
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding: 9px 12px;
+      }
+
+      #controls {
+        grid-column: 1 / -1;
+        justify-content: center;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      #controls::-webkit-scrollbar {
+        display: none;
+      }
+
+      #pageInfo {
+        min-width: auto;
+        justify-self: end;
+      }
+
+      #stage {
+        padding: 14px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      button {
+        height: 36px;
+        font-size: 13px;
+      }
+
+      #logoWrap {
+        width: 38px;
+        height: 38px;
+      }
+
+      .control-label {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header id="toolbar">
+    <div id="brand">
+      <div id="logoWrap">
+        <img id="logo" alt="" />
+      </div>
+      <div id="titleBlock">
+        <div id="customerName">SmartCatalog</div>
+        <div id="catalogTitle">Katalog wird geladen...</div>
+      </div>
+    </div>
+
+    <div id="pageInfo">Seite - / -</div>
+
+    <div id="controls">
+      <button class="control-button" type="button" id="prevBtn">&larr; <span class="control-label">Zurück</span></button>
+      <button class="control-button" type="button" id="nextBtn"><span class="control-label">Weiter</span> &rarr;</button>
+      <button class="icon-button" type="button" id="zoomOutBtn" title="Zoom kleiner">-</button>
+      <button class="icon-button" type="button" id="zoomInBtn" title="Zoom größer">+</button>
+      <button class="control-button secondary-button" type="button" id="resetBtn">Reset</button>
+      <button class="control-button secondary-button" type="button" id="hotspotBtn">Links</button>
+    </div>
+  </header>
+
+  <main id="viewer">
+    <div id="stage">
+      <div id="spread"></div>
+    </div>
+
+    <div id="loading">
+      <div id="loadingPanel">
+        <div id="loadingLogoWrap"><img id="loadingLogo" alt="" /></div>
+        <h1 id="loadingTitle">SmartCatalog</h1>
+        <p id="loadingText">Katalog wird vorbereitet.</p>
+        <div id="progressTrack"><div id="progressBar"></div></div>
+      </div>
+    </div>
+  </main>
+
+  <aside id="drawer" aria-live="polite">
+    <div id="drawerHeader">
+      <h2 id="drawerTitle"></h2>
+      <button class="icon-button secondary-button" type="button" id="drawerCloseBtn">×</button>
+    </div>
+    <div id="drawerBody"></div>
+    <div id="drawerActions"></div>
+  </aside>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const API_BASE = params.get("api_base") || window.location.origin;
+    const catalogId = params.get("catalog");
+
+    const viewerEl = document.getElementById("viewer");
+    const stageEl = document.getElementById("stage");
+    const spreadEl = document.getElementById("spread");
+    const pageInfoEl = document.getElementById("pageInfo");
+    const customerNameEl = document.getElementById("customerName");
+    const catalogTitleEl = document.getElementById("catalogTitle");
+    const logoWrapEl = document.getElementById("logoWrap");
+    const logoEl = document.getElementById("logo");
+    const loadingEl = document.getElementById("loading");
+    const loadingTitleEl = document.getElementById("loadingTitle");
+    const loadingTextEl = document.getElementById("loadingText");
+    const loadingLogoWrapEl = document.getElementById("loadingLogoWrap");
+    const loadingLogoEl = document.getElementById("loadingLogo");
+    const progressBarEl = document.getElementById("progressBar");
+    const drawerEl = document.getElementById("drawer");
+    const drawerTitleEl = document.getElementById("drawerTitle");
+    const drawerBodyEl = document.getElementById("drawerBody");
+    const drawerActionsEl = document.getElementById("drawerActions");
+
+    const state = {
+      catalog: null,
+      pages: [],
+      hotspots: [],
+      pageIndex: 0,
+      scale: 1,
+      panX: 0,
+      panY: 0,
+      startPanX: 0,
+      startPanY: 0,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      startTime: 0,
+      dragging: false,
+      moved: false,
+      pointers: new Map(),
+      pinchStartDistance: 0,
+      pinchStartScale: 1,
+      pinchStartCenter: null,
+      pinchStartPanX: 0,
+      pinchStartPanY: 0,
+      showHotspots: true,
+      lastTapAt: 0,
+      lastTapX: 0,
+      lastTapY: 0
+    };
+
+    if (!catalogId) {
+      showError("Kein Katalog angegeben.");
+      throw new Error("Kein catalog Parameter");
+    }
+
+    function setProgress(percent, text) {
+      progressBarEl.style.width = `${Math.max(0, Math.min(percent, 100))}%`;
+      if (text) loadingTextEl.innerText = text;
+    }
+
+    function hideLoading() {
+      setProgress(100, "Bereit.");
+      window.setTimeout(() => loadingEl.classList.add("hidden"), 260);
+    }
+
+    function showError(message) {
+      loadingTitleEl.innerText = "SmartCatalog";
+      loadingTextEl.innerText = message;
+      progressBarEl.style.width = "100%";
+    }
+
+    function isMobileLayout() {
+      return window.innerWidth < 820;
+    }
+
+    function visiblePageNumbers() {
+      if (isMobileLayout()) return [state.pageIndex + 1];
+      const left = state.pageIndex % 2 === 0 ? state.pageIndex + 1 : state.pageIndex;
+      const pages = [left];
+      if (left + 1 <= state.pages.length) pages.push(left + 1);
+      return pages;
+    }
+
+    function currentPageLabel() {
+      const visible = visiblePageNumbers();
+      return visible.length === 2
+        ? `Seite ${visible[0]} / ${visible[1]}`
+        : `Seite ${visible[0] || 1}`;
+    }
+
+    function updateBranding() {
+      const customer = state.catalog.customer || {};
+      const title = state.catalog.title || "SmartCatalog";
+      const customerName = customer.company_name || "SmartCatalog";
+      const logoUrl = customer.logo_url || "";
+
+      document.title = title;
+      customerNameEl.innerText = customerName;
+      catalogTitleEl.innerText = title;
+      loadingTitleEl.innerText = customerName;
+
+      if (logoUrl) {
+        logoEl.src = logoUrl;
+        loadingLogoEl.src = logoUrl;
+        logoWrapEl.style.display = "flex";
+        loadingLogoWrapEl.style.display = "flex";
+      }
+    }
+
+    function clampPan() {
+      if (state.scale <= 1) {
+        state.panX = 0;
+        state.panY = 0;
+        return;
+      }
+
+      const stageRect = stageEl.getBoundingClientRect();
+      const spreadRect = spreadEl.getBoundingClientRect();
+      const maxX = Math.max(0, (spreadRect.width - stageRect.width) / 2 + 90);
+      const maxY = Math.max(0, (spreadRect.height - stageRect.height) / 2 + 90);
+
+      state.panX = Math.max(-maxX, Math.min(maxX, state.panX));
+      state.panY = Math.max(-maxY, Math.min(maxY, state.panY));
+    }
+
+    function applyTransform() {
+      clampPan();
+      spreadEl.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+    }
+
+    function resetZoom() {
+      state.scale = 1;
+      state.panX = 0;
+      state.panY = 0;
+      stageEl.classList.remove("dragging");
+      applyTransform();
+    }
+
+    function setZoomAt(nextScale, clientX, clientY) {
+      const clamped = Math.max(1, Math.min(3.2, nextScale));
+      const stageRect = stageEl.getBoundingClientRect();
+      const x = clientX - stageRect.left - stageRect.width / 2;
+      const y = clientY - stageRect.top - stageRect.height / 2;
+      const contentX = (x - state.panX) / state.scale;
+      const contentY = (y - state.panY) / state.scale;
+
+      state.scale = clamped;
+      state.panX = x - contentX * state.scale;
+      state.panY = y - contentY * state.scale;
+
+      if (state.scale <= 1.01) resetZoom();
+      else applyTransform();
+    }
+
+    function renderHotspots(pageEl, pageNumber) {
+      const hotspots = state.hotspots.filter((hotspot) => Number(hotspot.page) === pageNumber);
+
+      hotspots.forEach((hotspot) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "hotspot";
+        button.title = hotspot.title || hotspot.label || "Link";
+        button.style.left = `${hotspot.position.left * 100}%`;
+        button.style.top = `${hotspot.position.top * 100}%`;
+        button.style.width = `${hotspot.position.width * 100}%`;
+        button.style.height = `${hotspot.position.height * 100}%`;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (state.moved) return;
+          openHotspot(hotspot);
+        });
+        pageEl.appendChild(button);
+      });
+    }
+
+    function render() {
+      const visible = visiblePageNumbers();
+      spreadEl.innerHTML = "";
+      spreadEl.style.gap = isMobileLayout() ? "0px" : "1px";
+
+      const stageRect = stageEl.getBoundingClientRect();
+      const maxWidth = Math.max(260, stageRect.width - 28);
+      const maxHeight = Math.max(320, stageRect.height - 28);
+      const pageWidth = isMobileLayout() ? maxWidth : maxWidth / visible.length;
+
+      visible.forEach((pageNumber) => {
+        const page = state.pages[pageNumber - 1];
+        if (!page) return;
+
+        const pageEl = document.createElement("div");
+        pageEl.className = "page";
+        pageEl.style.width = `${pageWidth}px`;
+        pageEl.style.maxHeight = `${maxHeight}px`;
+        pageEl.style.aspectRatio = page.aspectRatio || "0.707";
+
+        const img = document.createElement("img");
+        img.src = page.image_url;
+        img.alt = `Seite ${pageNumber}`;
+        pageEl.appendChild(img);
+        renderHotspots(pageEl, pageNumber);
+        spreadEl.appendChild(pageEl);
+      });
+
+      pageInfoEl.innerText = `${currentPageLabel()} / ${state.pages.length}`;
+      viewerEl.classList.toggle("hotspots-visible", state.showHotspots);
+      applyTransform();
+    }
+
+    function goToPage(pageNumber) {
+      const next = Math.max(1, Math.min(state.pages.length, pageNumber));
+      state.pageIndex = next - 1;
+      resetZoom();
+      closeDrawer();
+      render();
+    }
+
+    function nextPage() {
+      const visible = visiblePageNumbers();
+      const lastVisible = visible[visible.length - 1] || state.pageIndex + 1;
+      goToPage(lastVisible + 1);
+    }
+
+    function prevPage() {
+      const visible = visiblePageNumbers();
+      const firstVisible = visible[0] || state.pageIndex + 1;
+      goToPage(firstVisible - (isMobileLayout() ? 1 : 2));
+    }
+
+    function openHotspot(hotspot) {
+      drawerTitleEl.innerText =
+        hotspot.product?.name || hotspot.title || hotspot.label || "Interaktion";
+      drawerActionsEl.innerHTML = "";
+
+      if (hotspot.type === "product") {
+        drawerBodyEl.innerHTML = `
+          ${hotspot.product?.price ? `<strong>${escapeHtml(hotspot.product.price)}</strong><br>` : ""}
+          ${hotspot.product?.description ? escapeHtml(hotspot.product.description) : "Produktdetails"}
+        `;
+        if (hotspot.product?.url) addDrawerLink(hotspot.product.url, "Produkt öffnen");
+      } else if (hotspot.type === "page") {
+        drawerBodyEl.innerText = `Springe zu Seite ${hotspot.target_page}.`;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "control-button";
+        button.innerText = "Seite öffnen";
+        button.addEventListener("click", () => goToPage(hotspot.target_page));
+        drawerActionsEl.appendChild(button);
+      } else {
+        drawerBodyEl.innerText = hotspot.label || hotspot.title || "Externer Link";
+        if (hotspot.url) addDrawerLink(hotspot.url, "Link öffnen", hotspot.target);
+      }
+
+      drawerEl.classList.add("open");
+    }
+
+    function addDrawerLink(url, label, target = "_blank") {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = target;
+      link.rel = "noopener noreferrer";
+      link.innerText = label;
+      drawerActionsEl.appendChild(link);
+    }
+
+    function closeDrawer() {
+      drawerEl.classList.remove("open");
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function pointerList() {
+      return Array.from(state.pointers.values());
+    }
+
+    function pointerDistance(points) {
+      return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+    }
+
+    function pointerCenter(points) {
+      return {
+        x: (points[0].x + points[1].x) / 2,
+        y: (points[0].y + points[1].y) / 2
+      };
+    }
+
+    function startGesture(event) {
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      stageEl.setPointerCapture?.(event.pointerId);
+      state.moved = false;
+
+      const points = pointerList();
+      if (points.length === 1) {
+        state.startX = event.clientX;
+        state.startY = event.clientY;
+        state.lastX = event.clientX;
+        state.lastY = event.clientY;
+        state.startPanX = state.panX;
+        state.startPanY = state.panY;
+        state.startTime = Date.now();
+        state.dragging = true;
+      }
+
+      if (points.length === 2) {
+        state.pinchStartDistance = pointerDistance(points);
+        state.pinchStartScale = state.scale;
+        state.pinchStartCenter = pointerCenter(points);
+        state.startPanX = state.panX;
+        state.startPanY = state.panY;
+      }
+    }
+
+    function moveGesture(event) {
+      if (!state.pointers.has(event.pointerId)) return;
+
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const points = pointerList();
+
+      if (points.length === 2 && state.pinchStartDistance) {
+        const center = pointerCenter(points);
+        const ratio = pointerDistance(points) / state.pinchStartDistance;
+        const nextScale = Math.max(1, Math.min(3.2, state.pinchStartScale * ratio));
+        const dx = center.x - state.pinchStartCenter.x;
+        const dy = center.y - state.pinchStartCenter.y;
+
+        state.scale = nextScale;
+        state.panX = state.startPanX + dx;
+        state.panY = state.startPanY + dy;
+        state.moved = true;
+        applyTransform();
+        event.preventDefault();
+        return;
+      }
+
+      if (points.length !== 1 || !state.dragging) return;
+
+      const dx = event.clientX - state.startX;
+      const dy = event.clientY - state.startY;
+
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) state.moved = true;
+
+      if (state.scale > 1.01) {
+        stageEl.classList.add("dragging");
+        state.panX = state.startPanX + dx;
+        state.panY = state.startPanY + dy;
+        applyTransform();
+        event.preventDefault();
+      }
+    }
+
+    function endGesture(event) {
+      if (!state.pointers.has(event.pointerId)) return;
+
+      state.pointers.delete(event.pointerId);
+
+      if (state.pointers.size > 0) {
+        const remaining = pointerList()[0];
+        state.startX = remaining.x;
+        state.startY = remaining.y;
+        state.startPanX = state.panX;
+        state.startPanY = state.panY;
+        state.pinchStartDistance = 0;
+        return;
+      }
+
+      stageEl.classList.remove("dragging");
+
+      const dx = event.clientX - state.startX;
+      const dy = event.clientY - state.startY;
+      const elapsed = Date.now() - state.startTime;
+      const swipeDistance = Math.min(96, Math.max(42, stageEl.clientWidth * 0.09));
+      const horizontalSwipe = Math.abs(dx) >= swipeDistance && Math.abs(dx) > Math.abs(dy) * 1.25;
+      const fastEnough = elapsed < 1400 || Math.abs(dx) > swipeDistance * 1.65;
+
+      if (state.scale <= 1.01 && horizontalSwipe && fastEnough) {
+        if (dx < 0) nextPage();
+        else prevPage();
+      }
+
+      if (!state.moved && elapsed < 280) handleTap(event.clientX, event.clientY);
+
+      state.dragging = false;
+      state.pinchStartDistance = 0;
+      window.setTimeout(() => {
+        state.moved = false;
+      }, 80);
+    }
+
+    function handleTap(clientX, clientY) {
+      const now = Date.now();
+      const distance = Math.hypot(clientX - state.lastTapX, clientY - state.lastTapY);
+      const doubleTap = now - state.lastTapAt < 320 && distance < 34;
+
+      state.lastTapAt = now;
+      state.lastTapX = clientX;
+      state.lastTapY = clientY;
+
+      if (doubleTap) {
+        if (state.scale > 1.01) resetZoom();
+        else setZoomAt(2.1, clientX, clientY);
+      }
+    }
+
+    async function loadImageMeta(page) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          page.aspectRatio = `${img.naturalWidth || 1} / ${img.naturalHeight || 1}`;
+          resolve(page);
+        };
+        img.onerror = () => resolve(page);
+        img.src = page.image_url;
+      });
+    }
+
+    async function start() {
+      try {
+        setProgress(12, "Katalogdaten werden geladen...");
+
+        const response = await fetch(`${API_BASE}/api/smartviewer-v2/catalogs/${catalogId}`);
+        if (!response.ok) throw new Error("Katalog konnte nicht geladen werden");
+
+        state.catalog = await response.json();
+        state.pages = state.catalog.pages || [];
+        state.hotspots = state.catalog.hotspots || [];
+
+        if (!state.pages.length) throw new Error("Keine Seiten gefunden");
+
+        updateBranding();
+        setProgress(42, "Seiten werden vorbereitet...");
+
+        await Promise.all(state.pages.slice(0, 4).map(loadImageMeta));
+        state.pages.slice(4).forEach(loadImageMeta);
+
+        setProgress(86, "Viewer wird gestartet...");
+        render();
+        hideLoading();
+      } catch (error) {
+        console.error(error);
+        showError(error.message || "Fehler beim Laden des Katalogs.");
+      }
+    }
+
+    document.getElementById("prevBtn").addEventListener("click", prevPage);
+    document.getElementById("nextBtn").addEventListener("click", nextPage);
+    document.getElementById("zoomInBtn").addEventListener("click", () => {
+      const rect = stageEl.getBoundingClientRect();
+      setZoomAt(state.scale + 0.2, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    });
+    document.getElementById("zoomOutBtn").addEventListener("click", () => {
+      const rect = stageEl.getBoundingClientRect();
+      setZoomAt(state.scale - 0.2, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    });
+    document.getElementById("resetBtn").addEventListener("click", resetZoom);
+    document.getElementById("hotspotBtn").addEventListener("click", () => {
+      state.showHotspots = !state.showHotspots;
+      viewerEl.classList.toggle("hotspots-visible", state.showHotspots);
+    });
+    document.getElementById("drawerCloseBtn").addEventListener("click", closeDrawer);
+
+    stageEl.addEventListener("pointerdown", startGesture);
+    stageEl.addEventListener("pointermove", moveGesture);
+    stageEl.addEventListener("pointerup", endGesture);
+    stageEl.addEventListener("pointercancel", (event) => {
+      state.pointers.delete(event.pointerId);
+      stageEl.classList.remove("dragging");
+      state.dragging = false;
+    });
+
+    stageEl.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      setZoomAt(state.scale + (event.deltaY < 0 ? 0.18 : -0.18), event.clientX, event.clientY);
+    }, { passive: false });
+
+    window.addEventListener("resize", () => {
+      if (!state.pages.length) return;
+      window.requestAnimationFrame(render);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight") nextPage();
+      if (event.key === "ArrowLeft") prevPage();
+      if (event.key === "+") document.getElementById("zoomInBtn").click();
+      if (event.key === "-") document.getElementById("zoomOutBtn").click();
+      if (event.key === "0") resetZoom();
+      if (event.key === "Escape") closeDrawer();
+    });
+
+    start();
+  </script>
+</body>
+</html>
