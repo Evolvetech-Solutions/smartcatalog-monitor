@@ -11,6 +11,7 @@ uploads/
 catalog-pages/
 customer-assets/
 data-backups/
+catalog-hotspots.json
 customers.json
 requests.json
 history.json

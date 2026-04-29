@@ -41,6 +41,15 @@ Aktueller Standard fuer den Blaetterkatalog:
 /smartviewer/index.html?catalog=<catalog_id>
 ```
 
+Neue Prospekt-App / SmartViewer V2:
+
+```text
+/smartviewer-v2/index.html?catalog=<catalog_id>
+```
+
+SmartViewer V2 ist als Publitas-aehnliche Viewer-Basis gedacht: mobile Swipe,
+Pinch-Zoom, Pan im Zoom und Hotspots/Links.
+
 Der alte Pfad `/flipbook` ist kein offizieller Anzeigeweg mehr.
 
 Normale PDF-Ansicht:
@@ -125,6 +134,97 @@ logo=<image file>
 ```
 
 Beim Hochladen eines neuen Logos ersetzt die API das bisherige Kundenlogo und entfernt die alte Datei aus `customer-assets/`.
+
+## SmartViewer V2
+
+Oeffentliche Katalogdaten fuer den Viewer:
+
+```http
+GET /api/smartviewer-v2/catalogs/:catalogId
+```
+
+Antwort:
+
+```json
+{
+  "catalog_id": "1777318518555",
+  "id": 1777318518555,
+  "title": "Katalogname",
+  "customer": {
+    "customer_number": "1234",
+    "company_name": "Firma GmbH",
+    "logo_url": "https://api.evolvetech-solutions.de/customer-assets/logo.png"
+  },
+  "pages": [
+    {
+      "page": 1,
+      "image_url": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-1.jpg"
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "link-1",
+      "type": "link",
+      "page": 1,
+      "title": "Angebot ansehen",
+      "position": {
+        "left": 0.12,
+        "top": 0.34,
+        "width": 0.2,
+        "height": 0.14
+      },
+      "url": "https://example.com",
+      "target": "_blank"
+    }
+  ]
+}
+```
+
+Hotspots im Kundenportal lesen und speichern:
+
+```http
+GET /api/customer/catalogs/:id/hotspots
+PUT /api/customer/catalogs/:id/hotspots
+Authorization: Bearer <CUSTOMER_JWT>
+Content-Type: application/json
+```
+
+PUT-Body:
+
+```json
+{
+  "hotspots": [
+    {
+      "id": "angebot-1",
+      "type": "product",
+      "page": 2,
+      "title": "Produkt",
+      "position": {
+        "left": 0.1,
+        "top": 0.2,
+        "width": 0.3,
+        "height": 0.18
+      },
+      "product": {
+        "name": "Produktname",
+        "price": "9,99 EUR",
+        "description": "Kurzbeschreibung",
+        "image_url": "",
+        "url": "https://example.com/produkt",
+        "sku": "ABC-123"
+      }
+    }
+  ]
+}
+```
+
+Unterstuetzte Hotspot-Typen:
+
+- `link`: externer Link
+- `product`: Produktkarte mit optionalem Produktlink
+- `page`: Sprung zu einer anderen Seite
+- `video`: Videolink
+- `note`: reine Info
 
 ## Wichtige Datenfelder
 
