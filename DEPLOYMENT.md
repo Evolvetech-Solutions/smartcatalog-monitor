@@ -89,3 +89,14 @@ tar --exclude='/root/smartcatalog-monitor/node_modules' \
   -czf /root/backups/smartcatalog-monitor-backup-$(date +%F-%H%M).tar.gz \
   /root/smartcatalog-monitor
 ```
+
+## Viewer
+
+Die App bedient zwei offizielle Anzeigewege:
+
+- PDF-Ansicht: `/viewer/web/viewer.html?file=...`
+- Blaetterkatalog: `/smartviewer/index.html?catalog=...`
+
+Die PDF-Ansicht wird vom eigenen `pdf-viewer/` bedient und nutzt `pdfjs-dist` aus `node_modules`. Deshalb ist `npm install` beim Deployment wichtig.
+
+Der alte manuell hochgeladene VPS-Ordner `/root/smartcatalog-monitor/viewer` wird fuer den neuen PDF-Viewer nicht mehr als Quelle gebraucht. Er kann nach erfolgreichem Live-Test separat archiviert werden.

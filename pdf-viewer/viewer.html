@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Viewer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --toolbar-bg: #ffffff;
+      --page-bg: #ececec;
+      --text: #202124;
+      --muted: #666;
+      --button-bg: #242424;
+      --button-text: #ffffff;
+      --border: #d8d8d8;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: var(--text);
+      background: var(--page-bg);
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #toolbar {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      z-index: 2;
+      box-sizing: border-box;
+    }
+
+    button {
+      min-width: 40px;
+      height: 36px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--button-bg);
+      color: var(--button-text);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    #pageInfo {
+      min-width: 110px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    #viewer {
+      flex: 1;
+      overflow: auto;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    #pages {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+
+    canvas {
+      display: block;
+      max-width: 100%;
+      background: #fff;
+      box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+    }
+
+    #status {
+      margin: 36px auto;
+      max-width: 680px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 15px;
+    }
+
+    @media (max-width: 720px) {
+      #toolbar {
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+
+      #viewer {
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="prevPage" title="Vorherige Seite">&lsaquo;</button>
+    <span id="pageInfo">Seite - / -</span>
+    <button id="nextPage" title="Naechste Seite">&rsaquo;</button>
+    <button id="zoomOut" title="Kleiner">-</button>
+    <button id="zoomIn" title="Groesser">+</button>
+    <button id="fitWidth" title="Breite anpassen">&harr;</button>
+    <button id="download" title="PDF herunterladen">&darr;</button>
+  </div>
+
+  <main id="viewer">
+    <div id="status">PDF wird geladen...</div>
+    <div id="pages"></div>
+  </main>
+
+  <script type="module">
+    import * as pdfjsLib from "/pdfjs/build/pdf.mjs";
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/build/pdf.worker.mjs";
+
+    const params = new URLSearchParams(window.location.search);
+    const fileUrl = params.get("file");
+
+    const viewerEl = document.getElementById("viewer");
+    const pagesEl = document.getElementById("pages");
+    const statusEl = document.getElementById("status");
+    const pageInfoEl = document.getElementById("pageInfo");
+    const prevButton = document.getElementById("prevPage");
+    const nextButton = document.getElementById("nextPage");
+    const zoomOutButton = document.getElementById("zoomOut");
+    const zoomInButton = document.getElementById("zoomIn");
+    const fitWidthButton = document.getElementById("fitWidth");
+    const downloadButton = document.getElementById("download");
+
+    let pdfDocument = null;
+    let currentPage = 1;
+    let scale = 1.25;
+    let renderToken = 0;
+
+    if (!fileUrl) {
+      showStatus("Keine PDF-Datei angegeben.");
+      throw new Error("Missing file parameter");
+    }
+
+    downloadButton.addEventListener("click", () => {
+      window.open(fileUrl, "_blank", "noopener");
+    });
+
+    prevButton.addEventListener("click", () => scrollToPage(currentPage - 1));
+    nextButton.addEventListener("click", () => scrollToPage(currentPage + 1));
+
+    zoomOutButton.addEventListener("click", async () => {
+      scale = Math.max(scale - 0.15, 0.45);
+      await renderAllPages();
+    });
+
+    zoomInButton.addEventListener("click", async () => {
+      scale = Math.min(scale + 0.15, 3);
+      await renderAllPages();
+    });
+
+    fitWidthButton.addEventListener("click", async () => {
+      if (!pdfDocument) return;
+      const page = await pdfDocument.getPage(currentPage);
+      const viewport = page.getViewport({ scale: 1 });
+      const availableWidth = Math.max(viewerEl.clientWidth - 48, 260);
+      scale = Math.min(Math.max(availableWidth / viewport.width, 0.45), 3);
+      await renderAllPages();
+    });
+
+    viewerEl.addEventListener("scroll", updateCurrentPage, { passive: true });
+
+    async function loadPdf() {
+      try {
+        pdfDocument = await pdfjsLib.getDocument({
+          url: fileUrl,
+          cMapUrl: "/pdfjs/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl: "/pdfjs/standard_fonts/"
+        }).promise;
+
+        await renderAllPages();
+      } catch (error) {
+        console.error(error);
+        showStatus("PDF konnte nicht geladen werden.");
+      }
+    }
+
+    async function renderAllPages() {
+      const token = ++renderToken;
+      pagesEl.innerHTML = "";
+      showStatus("PDF wird gerendert...");
+
+      for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber++) {
+        if (token !== renderToken) return;
+
+        const page = await pdfDocument.getPage(pageNumber);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        const outputScale = window.devicePixelRatio || 1;
+
+        canvas.dataset.pageNumber = String(pageNumber);
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        await page.render({
+          canvasContext: context,
+          viewport,
+          transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null
+        }).promise;
+
+        pagesEl.appendChild(canvas);
+      }
+
+      hideStatus();
+      updateCurrentPage();
+    }
+
+    function scrollToPage(pageNumber) {
+      if (!pdfDocument) return;
+      const nextPage = Math.min(Math.max(pageNumber, 1), pdfDocument.numPages);
+      const canvas = pagesEl.querySelector(`[data-page-number="${nextPage}"]`);
+      canvas?.scrollIntoView({ behavior: "smooth", block: "start" });
+      currentPage = nextPage;
+      updateToolbar();
+    }
+
+    function updateCurrentPage() {
+      const canvases = [...pagesEl.querySelectorAll("canvas")];
+      if (!canvases.length || !pdfDocument) {
+        updateToolbar();
+        return;
+      }
+
+      const viewerTop = viewerEl.getBoundingClientRect().top;
+      let bestPage = currentPage;
+      let bestDistance = Infinity;
+
+      for (const canvas of canvases) {
+        const distance = Math.abs(canvas.getBoundingClientRect().top - viewerTop - 24);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestPage = Number(canvas.dataset.pageNumber);
+        }
+      }
+
+      currentPage = bestPage;
+      updateToolbar();
+    }
+
+    function updateToolbar() {
+      const totalPages = pdfDocument?.numPages || 0;
+      pageInfoEl.textContent = totalPages
+        ? `Seite ${currentPage} / ${totalPages}`
+        : "Seite - / -";
+
+      prevButton.disabled = !totalPages || currentPage <= 1;
+      nextButton.disabled = !totalPages || currentPage >= totalPages;
+      zoomOutButton.disabled = !totalPages;
+      zoomInButton.disabled = !totalPages;
+      fitWidthButton.disabled = !totalPages;
+      downloadButton.disabled = !fileUrl;
+    }
+
+    function showStatus(message) {
+      statusEl.textContent = message;
+      statusEl.hidden = false;
+    }
+
+    function hideStatus() {
+      statusEl.hidden = true;
+    }
+
+    updateToolbar();
+    loadPdf();
+  </script>
+</body>
+</html>

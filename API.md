@@ -47,6 +47,8 @@ Normale PDF-Ansicht:
 /viewer/web/viewer.html?file=<encoded_pdf_url>
 ```
 
+Dieser Pfad wird von der App selbst bedient und nutzt `pdfjs-dist` aus `node_modules`.
+
 ## Allgemein
 
 ```http
