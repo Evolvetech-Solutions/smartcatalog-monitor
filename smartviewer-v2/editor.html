@@ -377,7 +377,8 @@
     const API_BASE = params.get("api_base") || window.location.origin;
     const catalogId = params.get("catalog") || "";
     const catalogItemId = params.get("id") || params.get("catalog_item_id") || "";
-    const token =
+    const editorToken = params.get("edit_token") || "";
+    const customerToken =
       params.get("token") ||
       localStorage.getItem("smartcatalog_customer_token") ||
       localStorage.getItem("customerToken") ||
@@ -417,8 +418,24 @@
       el.status.innerText = message;
     }
 
-    function authHeaders() {
-      return token ? { Authorization: `Bearer ${token}` } : {};
+    function canSave() {
+      return Boolean(editorToken || (catalogItemId && customerToken));
+    }
+
+    function authHeaders(authToken = customerToken) {
+      return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+    }
+
+    function hotspotEndpoint() {
+      if (editorToken) {
+        return `${API_BASE}/api/smartviewer-v2/editor/catalogs/${catalogId}/hotspots`;
+      }
+
+      return `${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots`;
+    }
+
+    function hotspotAuthHeaders() {
+      return authHeaders(editorToken || customerToken);
     }
 
     function currentHotspot() {
@@ -615,11 +632,10 @@
       state.pages = state.catalog.pages || [];
       state.hotspots = state.catalog.hotspots || [];
 
-      if (catalogItemId && token) {
-        const hotspotResponse = await fetch(
-          `${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots`,
-          { headers: authHeaders() }
-        );
+      if (canSave()) {
+        const hotspotResponse = await fetch(hotspotEndpoint(), {
+          headers: hotspotAuthHeaders()
+        });
         if (hotspotResponse.ok) {
           const data = await hotspotResponse.json();
           state.hotspots = data.hotspots || state.hotspots;
@@ -635,21 +651,21 @@
       };
 
       render();
-      setStatus(token && catalogItemId ? "Bereit." : "Vorschau-Modus: Zum Speichern Kunden-Token und Katalog-ID übergeben.");
+      setStatus(canSave() ? "Bereit." : "Vorschau-Modus: Zum Speichern Editor-Link aus dem Kundenportal öffnen.");
     }
 
     async function save() {
-      if (!catalogItemId || !token) {
-        setStatus("Speichern nicht möglich: Kunden-Token oder Katalog-ID fehlt.");
+      if (!canSave()) {
+        setStatus("Speichern nicht möglich: Editor-Link aus dem Kundenportal öffnen.");
         return;
       }
 
       updateSelectedFromForm();
       setStatus("Wird gespeichert...");
-      const response = await fetch(`${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots`, {
+      const response = await fetch(hotspotEndpoint(), {
         method: "PUT",
         headers: {
-          ...authHeaders(),
+          ...hotspotAuthHeaders(),
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ hotspots: state.hotspots })

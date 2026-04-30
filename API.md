@@ -99,6 +99,7 @@ POST /api/customer/upload
 POST /api/customer/catalogs
 PUT /api/customer/catalogs/:id
 DELETE /api/customer/catalogs/:id
+POST /api/customer/catalogs/:id/editor-session
 GET /api/customer/requests
 POST /api/customer/requests
 ```
@@ -232,10 +233,26 @@ Editor fuer Hostinger/Kundenportal:
 /smartviewer-v2/editor.html?catalog=<catalog_id>&id=<catalog_record_id>
 ```
 
-Der Editor liest den Kunden-JWT aus `localStorage.smartcatalog_customer_token`,
-`localStorage.customerToken`, `localStorage.token` oder optional aus `?token=...`.
-Im produktiven Kundenportal sollte der Token nicht dauerhaft in der URL stehen,
-sondern aus dem Login-State des Dashboards bereitgestellt werden.
+Empfohlen: Das Kundenportal erzeugt vor dem Oeffnen einen kurzlebigen Editor-Link:
+
+```http
+POST /api/customer/catalogs/:id/editor-session
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Antwort:
+
+```json
+{
+  "success": true,
+  "catalog_id": "1777318518555",
+  "id": 1777318518555,
+  "editor_url": "https://api.evolvetech-solutions.de/smartviewer-v2/editor.html?catalog=1777318518555&id=1777318518555&edit_token=...",
+  "expires_in_seconds": 7200
+}
+```
+
+Der enthaltene `edit_token` ist nur fuer diesen Katalog und die Hotspot-Bearbeitung gueltig. Alternativ kann der Editor weiterhin einen Kunden-JWT aus `localStorage.smartcatalog_customer_token`, `localStorage.customerToken`, `localStorage.token` oder optional aus `?token=...` lesen.
 
 ## Wichtige Datenfelder
 
