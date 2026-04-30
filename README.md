@@ -93,6 +93,8 @@ Kundenlogos koennen ueber `POST /api/customer/logo` hochgeladen werden. Der Smar
 
 Kunden koennen ihre Kontaktdaten ueber `GET/PUT /api/customer/me` pflegen. Passwortaenderungen laufen ueber `PUT /api/customer/password` und erfordern das aktuelle Passwort.
 
+Der Kundenlogin unter `POST /api/customer-login` akzeptiert entweder die vierstellige Kundennummer oder eine hinterlegte E-Mail-Adresse. Frontends koennen dafuer `customer_number`, `email`, `login` oder `identifier` zusammen mit `password` senden.
+
 SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 
 ```text

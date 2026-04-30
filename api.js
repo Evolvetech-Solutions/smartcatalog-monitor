@@ -804,20 +804,27 @@ app.delete("/api/urls/:id", adminAuth, async (req, res) => {
 ========================= */
 
 app.post("/api/customer-login", async (req, res) => {
-  const { customer_number, password } = req.body;
+  const { customer_number, email, login, identifier, password } = req.body;
 
-  const normalizedCustomerNumber = normalizeCustomerNumber(customer_number);
+  const loginValue = normalizeText(
+    login || identifier || email || customer_number
+  );
+  const normalizedCustomerNumber = normalizeCustomerNumber(loginValue);
+  const normalizedEmail = normalizeEmail(loginValue);
 
-  if (!isValidCustomerNumber(normalizedCustomerNumber) || !password) {
+  if (!loginValue || !password) {
     return res.status(400).json({
-      error: "customer_number und password sind erforderlich"
+      error: "E-Mail oder Kundennummer und password sind erforderlich"
     });
   }
 
   const customers = await readJsonFile(CUSTOMERS_FILE, []);
   const customer = customers.find(
     (entry) =>
-      entry.customer_number === normalizedCustomerNumber &&
+      (
+        entry.customer_number === normalizedCustomerNumber ||
+        normalizeEmail(entry.email) === normalizedEmail
+      ) &&
       entry.is_active !== false
   );
 
@@ -845,7 +852,8 @@ app.post("/api/customer-login", async (req, res) => {
     token,
     customer: {
       customer_number: customer.customer_number,
-      company_name: customer.company_name || ""
+      company_name: customer.company_name || "",
+      email: customer.email || ""
     }
   });
 });
