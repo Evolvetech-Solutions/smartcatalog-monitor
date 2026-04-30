@@ -347,6 +347,10 @@
           <input id="targetPageInput" type="number" min="1" placeholder="Nur bei Seitensprung" />
         </div>
         <div class="field">
+          <label for="imageUrlInput">Produktbild URL</label>
+          <input id="imageUrlInput" placeholder="https://.../produktbild.jpg" />
+        </div>
+        <div class="field">
           <label for="priceInput">Preis</label>
           <input id="priceInput" placeholder="z. B. 9,99 EUR" />
         </div>
@@ -410,6 +414,7 @@
       titleInput: document.getElementById("titleInput"),
       urlInput: document.getElementById("urlInput"),
       targetPageInput: document.getElementById("targetPageInput"),
+      imageUrlInput: document.getElementById("imageUrlInput"),
       priceInput: document.getElementById("priceInput"),
       descriptionInput: document.getElementById("descriptionInput")
     };
@@ -545,6 +550,7 @@
         el.titleInput,
         el.urlInput,
         el.targetPageInput,
+        el.imageUrlInput,
         el.priceInput,
         el.descriptionInput
       ].forEach((input) => {
@@ -556,6 +562,7 @@
         el.titleInput.value = "";
         el.urlInput.value = "";
         el.targetPageInput.value = "";
+        el.imageUrlInput.value = "";
         el.priceInput.value = "";
         el.descriptionInput.value = "";
         return;
@@ -565,6 +572,7 @@
       el.titleInput.value = hotspot.title || "";
       el.urlInput.value = hotspot.url || hotspot.product?.url || "";
       el.targetPageInput.value = hotspot.target_page || "";
+      el.imageUrlInput.value = hotspot.product?.image_url || hotspot.image_url || "";
       el.priceInput.value = hotspot.product?.price || "";
       el.descriptionInput.value = hotspot.product?.description || "";
     }
@@ -586,8 +594,11 @@
           name: hotspot.title,
           price: el.priceInput.value.trim(),
           description: el.descriptionInput.value.trim(),
+          image_url: el.imageUrlInput.value.trim(),
           url: el.urlInput.value.trim()
         };
+      } else {
+        delete hotspot.product;
       }
 
       state.dirty = true;
@@ -753,6 +764,7 @@
       el.titleInput,
       el.urlInput,
       el.targetPageInput,
+      el.imageUrlInput,
       el.priceInput,
       el.descriptionInput
     ].forEach((input) => input.addEventListener("input", updateSelectedFromForm));

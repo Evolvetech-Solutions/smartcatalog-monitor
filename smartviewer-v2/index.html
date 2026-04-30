@@ -469,6 +469,35 @@
       text-decoration: none;
     }
 
+    .product-card {
+      display: grid;
+      gap: 12px;
+    }
+
+    .product-image {
+      width: 100%;
+      max-height: 220px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface-soft);
+    }
+
+    .product-price {
+      color: var(--ink);
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .product-description {
+      white-space: pre-line;
+    }
+
+    .link-note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     @media (max-width: 860px) {
       :root {
         --toolbar-height: 112px;
@@ -808,16 +837,27 @@
     }
 
     function openHotspot(hotspot) {
+      if ((hotspot.type === "link" || hotspot.type === "video") && hotspot.url) {
+        openExternalUrl(hotspot.url, hotspot.target);
+        return;
+      }
+
       drawerTitleEl.innerText =
         hotspot.product?.name || hotspot.title || hotspot.label || "Interaktion";
       drawerActionsEl.innerHTML = "";
 
       if (hotspot.type === "product") {
+        const productImage = hotspot.product?.image_url || hotspot.image_url || "";
+        const productDescription =
+          hotspot.product?.description || hotspot.description || "Produktdetails";
         drawerBodyEl.innerHTML = `
-          ${hotspot.product?.price ? `<strong>${escapeHtml(hotspot.product.price)}</strong><br>` : ""}
-          ${hotspot.product?.description ? escapeHtml(hotspot.product.description) : "Produktdetails"}
+          <div class="product-card">
+            ${productImage ? `<img class="product-image" src="${escapeAttribute(productImage)}" alt="${escapeAttribute(hotspot.product?.name || hotspot.title || "Produkt")}" />` : ""}
+            ${hotspot.product?.price ? `<div class="product-price">${escapeHtml(hotspot.product.price)}</div>` : ""}
+            <div class="product-description">${escapeHtml(productDescription)}</div>
+          </div>
         `;
-        if (hotspot.product?.url) addDrawerLink(hotspot.product.url, "Produkt öffnen");
+        if (hotspot.product?.url || hotspot.url) addDrawerLink(hotspot.product?.url || hotspot.url, "Zum Shop");
       } else if (hotspot.type === "page") {
         drawerBodyEl.innerText = `Springe zu Seite ${hotspot.target_page}.`;
         const button = document.createElement("button");
@@ -827,16 +867,29 @@
         button.addEventListener("click", () => goToPage(hotspot.target_page));
         drawerActionsEl.appendChild(button);
       } else {
-        drawerBodyEl.innerText = hotspot.label || hotspot.title || "Externer Link";
+        drawerBodyEl.innerHTML = `<div class="link-note">${escapeHtml(hotspot.label || hotspot.title || "Keine weitere Aktion hinterlegt.")}</div>`;
         if (hotspot.url) addDrawerLink(hotspot.url, "Link öffnen", hotspot.target);
       }
 
       drawerEl.classList.add("open");
     }
 
+    function openExternalUrl(url, target = "_blank") {
+      const safeUrl = normalizeExternalUrl(url);
+      if (!safeUrl) return;
+      window.open(safeUrl, target || "_blank", "noopener,noreferrer");
+    }
+
+    function normalizeExternalUrl(url) {
+      const value = String(url || "").trim();
+      if (!value) return "";
+      if (/^(https?:|mailto:|tel:)/i.test(value)) return value;
+      return `https://${value}`;
+    }
+
     function addDrawerLink(url, label, target = "_blank") {
       const link = document.createElement("a");
-      link.href = url;
+      link.href = normalizeExternalUrl(url);
       link.target = target;
       link.rel = "noopener noreferrer";
       link.innerText = label;
@@ -857,6 +910,10 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+    }
+
+    function escapeAttribute(value) {
+      return escapeHtml(value).replace(/`/g, "&#096;");
     }
 
     function pointerList() {
