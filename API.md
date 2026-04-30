@@ -106,6 +106,40 @@ GET /api/customer/requests
 POST /api/customer/requests
 ```
 
+Kundenlogin:
+
+```http
+POST /api/customer-login
+Content-Type: application/json
+```
+
+Login mit Kundennummer:
+
+```json
+{
+  "customer_number": "0047",
+  "password": "..."
+}
+```
+
+Login mit E-Mail:
+
+```json
+{
+  "email": "kunde@example.com",
+  "password": "..."
+}
+```
+
+Alternativ kann das Frontend ein allgemeines Feld `login` oder `identifier` senden:
+
+```json
+{
+  "login": "0047 oder kunde@example.com",
+  "password": "..."
+}
+```
+
 ## SmartViewer-Einstellungen
 
 ```http
