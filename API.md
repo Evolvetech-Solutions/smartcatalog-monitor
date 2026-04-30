@@ -226,6 +226,17 @@ Unterstuetzte Hotspot-Typen:
 - `video`: Videolink
 - `note`: reine Info
 
+Editor fuer Hostinger/Kundenportal:
+
+```text
+/smartviewer-v2/editor.html?catalog=<catalog_id>&id=<catalog_record_id>
+```
+
+Der Editor liest den Kunden-JWT aus `localStorage.smartcatalog_customer_token`,
+`localStorage.customerToken`, `localStorage.token` oder optional aus `?token=...`.
+Im produktiven Kundenportal sollte der Token nicht dauerhaft in der URL stehen,
+sondern aus dem Login-State des Dashboards bereitgestellt werden.
+
 ## Wichtige Datenfelder
 
 Katalog:
