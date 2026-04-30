@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SmartCatalog Hotspot Editor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --surface: #ffffff;
+      --surface-soft: #f7f9fc;
+      --ink: #101828;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --brand: #2563eb;
+      --brand-strong: #1d4ed8;
+      --danger: #dc2626;
+      --shadow: 0 18px 55px rgba(15, 23, 42, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+      z-index: 10;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    #subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #topActions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button,
+    select,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      min-height: 38px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 8px;
+      background: #111827;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 800;
+      padding: 0 12px;
+    }
+
+    button.secondary {
+      background: #eef2f7;
+      color: var(--ink);
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 14px;
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    #workspace {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+    }
+
+    #pageToolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    #pageCanvasWrap {
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.62), rgba(255,255,255,0)),
+        #dfe5ee;
+    }
+
+    #pageCanvas {
+      position: relative;
+      width: min(100%, 780px);
+      background: #fff;
+      box-shadow: var(--shadow);
+      touch-action: none;
+      user-select: none;
+    }
+
+    #pageImage {
+      width: 100%;
+      display: block;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
+    .hotspot {
+      position: absolute;
+      border: 2px solid rgba(37, 99, 235, 0.78);
+      border-radius: 6px;
+      background: rgba(37, 99, 235, 0.12);
+      cursor: pointer;
+    }
+
+    .hotspot.selected {
+      border-color: #f97316;
+      background: rgba(249, 115, 22, 0.16);
+    }
+
+    .draft {
+      position: absolute;
+      border: 2px dashed #111827;
+      border-radius: 6px;
+      background: rgba(17, 24, 39, 0.08);
+      pointer-events: none;
+    }
+
+    aside {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 12px;
+    }
+
+    .panel {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 10px;
+    }
+
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+
+    #status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #hotspotList {
+      display: grid;
+      gap: 8px;
+    }
+
+    .listItem {
+      width: 100%;
+      min-height: auto;
+      display: grid;
+      gap: 3px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      color: var(--ink);
+      text-align: left;
+      box-shadow: none;
+    }
+
+    .listItem strong {
+      font-size: 13px;
+    }
+
+    .listItem span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 980px) {
+      body {
+        overflow: auto;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      #pageCanvasWrap {
+        max-height: 70vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Hotspot Editor</h1>
+      <div id="subtitle">Katalog wird geladen...</div>
+    </div>
+    <div id="topActions">
+      <button type="button" class="secondary" id="openViewerBtn">Viewer öffnen</button>
+      <button type="button" id="saveBtn">Speichern</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="workspace">
+      <div id="pageToolbar">
+        <label for="pageSelect">Seite</label>
+        <select id="pageSelect"></select>
+        <button type="button" class="secondary" id="prevPageBtn">←</button>
+        <button type="button" class="secondary" id="nextPageBtn">→</button>
+        <p class="hint">Zum Erstellen eines Hotspots auf der Seite ziehen.</p>
+      </div>
+
+      <div id="pageCanvasWrap">
+        <div id="pageCanvas">
+          <img id="pageImage" alt="" />
+        </div>
+      </div>
+    </section>
+
+    <aside>
+      <section class="panel">
+        <h2>Ausgewählter Hotspot</h2>
+        <div class="field">
+          <label for="typeInput">Typ</label>
+          <select id="typeInput">
+            <option value="link">Link</option>
+            <option value="product">Produkt</option>
+            <option value="page">Seitensprung</option>
+            <option value="video">Video</option>
+            <option value="note">Notiz</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="titleInput">Titel</label>
+          <input id="titleInput" placeholder="z. B. Angebot ansehen" />
+        </div>
+        <div class="field">
+          <label for="urlInput">URL</label>
+          <input id="urlInput" placeholder="https://..." />
+        </div>
+        <div class="field">
+          <label for="targetPageInput">Zielseite</label>
+          <input id="targetPageInput" type="number" min="1" placeholder="Nur bei Seitensprung" />
+        </div>
+        <div class="field">
+          <label for="priceInput">Preis</label>
+          <input id="priceInput" placeholder="z. B. 9,99 EUR" />
+        </div>
+        <div class="field">
+          <label for="descriptionInput">Beschreibung</label>
+          <textarea id="descriptionInput" placeholder="Kurze Produktbeschreibung"></textarea>
+        </div>
+        <div class="row">
+          <button type="button" class="danger" id="deleteBtn">Löschen</button>
+          <button type="button" class="secondary" id="clearBtn">Auswahl aufheben</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Status</h2>
+        <div id="status">Bereit.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Hotspots</h2>
+        <div id="hotspotList"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const API_BASE = params.get("api_base") || window.location.origin;
+    const catalogId = params.get("catalog") || "";
+    const catalogItemId = params.get("id") || params.get("catalog_item_id") || "";
+    const token =
+      params.get("token") ||
+      localStorage.getItem("smartcatalog_customer_token") ||
+      localStorage.getItem("customerToken") ||
+      localStorage.getItem("token") ||
+      "";
+
+    const state = {
+      catalog: null,
+      pages: [],
+      hotspots: [],
+      currentPage: 1,
+      selectedId: "",
+      draft: null,
+      drawing: false,
+      drawStart: null,
+      dirty: false
+    };
+
+    const el = {
+      subtitle: document.getElementById("subtitle"),
+      pageSelect: document.getElementById("pageSelect"),
+      pageCanvas: document.getElementById("pageCanvas"),
+      pageImage: document.getElementById("pageImage"),
+      status: document.getElementById("status"),
+      hotspotList: document.getElementById("hotspotList"),
+      saveBtn: document.getElementById("saveBtn"),
+      openViewerBtn: document.getElementById("openViewerBtn"),
+      typeInput: document.getElementById("typeInput"),
+      titleInput: document.getElementById("titleInput"),
+      urlInput: document.getElementById("urlInput"),
+      targetPageInput: document.getElementById("targetPageInput"),
+      priceInput: document.getElementById("priceInput"),
+      descriptionInput: document.getElementById("descriptionInput")
+    };
+
+    function setStatus(message) {
+      el.status.innerText = message;
+    }
+
+    function authHeaders() {
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    function currentHotspot() {
+      return state.hotspots.find((hotspot) => hotspot.id === state.selectedId) || null;
+    }
+
+    function pageHotspots() {
+      return state.hotspots.filter((hotspot) => Number(hotspot.page) === state.currentPage);
+    }
+
+    function makeId() {
+      return `hotspot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function clamp(value) {
+      return Math.max(0, Math.min(1, value));
+    }
+
+    function getRelativePoint(event) {
+      const rect = el.pageCanvas.getBoundingClientRect();
+      return {
+        x: clamp((event.clientX - rect.left) / rect.width),
+        y: clamp((event.clientY - rect.top) / rect.height)
+      };
+    }
+
+    function normalizeRect(start, end) {
+      const left = Math.min(start.x, end.x);
+      const top = Math.min(start.y, end.y);
+      const width = Math.abs(end.x - start.x);
+      const height = Math.abs(end.y - start.y);
+      return { left, top, width, height };
+    }
+
+    function render() {
+      const page = state.pages[state.currentPage - 1];
+      el.pageImage.src = page?.image_url || "";
+      el.pageImage.alt = `Seite ${state.currentPage}`;
+      el.pageSelect.value = String(state.currentPage);
+
+      el.pageCanvas.querySelectorAll(".hotspot,.draft").forEach((node) => node.remove());
+
+      pageHotspots().forEach((hotspot) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `hotspot ${hotspot.id === state.selectedId ? "selected" : ""}`;
+        button.style.left = `${hotspot.position.left * 100}%`;
+        button.style.top = `${hotspot.position.top * 100}%`;
+        button.style.width = `${hotspot.position.width * 100}%`;
+        button.style.height = `${hotspot.position.height * 100}%`;
+        button.title = hotspot.title || hotspot.type;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          selectHotspot(hotspot.id);
+        });
+        el.pageCanvas.appendChild(button);
+      });
+
+      if (state.draft) {
+        const draft = document.createElement("div");
+        draft.className = "draft";
+        draft.style.left = `${state.draft.left * 100}%`;
+        draft.style.top = `${state.draft.top * 100}%`;
+        draft.style.width = `${state.draft.width * 100}%`;
+        draft.style.height = `${state.draft.height * 100}%`;
+        el.pageCanvas.appendChild(draft);
+      }
+
+      renderList();
+      fillForm();
+    }
+
+    function renderList() {
+      el.hotspotList.innerHTML = "";
+
+      state.hotspots
+        .slice()
+        .sort((a, b) => a.page - b.page)
+        .forEach((hotspot) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "listItem";
+          item.innerHTML = `
+            <strong>Seite ${hotspot.page}: ${escapeHtml(hotspot.title || hotspot.type)}</strong>
+            <span>${escapeHtml(hotspot.type)} ${hotspot.url ? "- " + escapeHtml(hotspot.url) : ""}</span>
+          `;
+          item.addEventListener("click", () => {
+            state.currentPage = hotspot.page;
+            selectHotspot(hotspot.id);
+          });
+          el.hotspotList.appendChild(item);
+        });
+    }
+
+    function selectHotspot(id) {
+      state.selectedId = id;
+      state.draft = null;
+      render();
+    }
+
+    function fillForm() {
+      const hotspot = currentHotspot();
+      const disabled = !hotspot;
+
+      [
+        el.typeInput,
+        el.titleInput,
+        el.urlInput,
+        el.targetPageInput,
+        el.priceInput,
+        el.descriptionInput
+      ].forEach((input) => {
+        input.disabled = disabled;
+      });
+
+      if (!hotspot) {
+        el.typeInput.value = "link";
+        el.titleInput.value = "";
+        el.urlInput.value = "";
+        el.targetPageInput.value = "";
+        el.priceInput.value = "";
+        el.descriptionInput.value = "";
+        return;
+      }
+
+      el.typeInput.value = hotspot.type || "link";
+      el.titleInput.value = hotspot.title || "";
+      el.urlInput.value = hotspot.url || hotspot.product?.url || "";
+      el.targetPageInput.value = hotspot.target_page || "";
+      el.priceInput.value = hotspot.product?.price || "";
+      el.descriptionInput.value = hotspot.product?.description || "";
+    }
+
+    function updateSelectedFromForm() {
+      const hotspot = currentHotspot();
+      if (!hotspot) return;
+
+      hotspot.type = el.typeInput.value;
+      hotspot.title = el.titleInput.value.trim();
+      hotspot.label = hotspot.title;
+      hotspot.url = el.urlInput.value.trim();
+      hotspot.target = "_blank";
+      hotspot.target_page = Number(el.targetPageInput.value) || hotspot.page;
+
+      if (hotspot.type === "product") {
+        hotspot.product = {
+          ...(hotspot.product || {}),
+          name: hotspot.title,
+          price: el.priceInput.value.trim(),
+          description: el.descriptionInput.value.trim(),
+          url: el.urlInput.value.trim()
+        };
+      }
+
+      state.dirty = true;
+      renderList();
+    }
+
+    function createHotspot(rect) {
+      if (rect.width < 0.015 || rect.height < 0.015) {
+        setStatus("Der markierte Bereich ist zu klein.");
+        return;
+      }
+
+      const hotspot = {
+        id: makeId(),
+        type: "link",
+        page: state.currentPage,
+        title: "Neuer Link",
+        label: "Neuer Link",
+        show_icon: true,
+        position: rect,
+        url: "",
+        target: "_blank"
+      };
+
+      state.hotspots.push(hotspot);
+      state.selectedId = hotspot.id;
+      state.dirty = true;
+      setStatus("Hotspot erstellt. Details rechts bearbeiten.");
+      render();
+    }
+
+    async function load() {
+      if (!catalogId) {
+        setStatus("catalog Parameter fehlt.");
+        return;
+      }
+
+      setStatus("Katalog wird geladen...");
+      const response = await fetch(`${API_BASE}/api/smartviewer-v2/catalogs/${catalogId}`);
+      if (!response.ok) throw new Error("Katalog konnte nicht geladen werden.");
+      state.catalog = await response.json();
+      state.pages = state.catalog.pages || [];
+      state.hotspots = state.catalog.hotspots || [];
+
+      if (catalogItemId && token) {
+        const hotspotResponse = await fetch(
+          `${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots`,
+          { headers: authHeaders() }
+        );
+        if (hotspotResponse.ok) {
+          const data = await hotspotResponse.json();
+          state.hotspots = data.hotspots || state.hotspots;
+        }
+      }
+
+      el.subtitle.innerText = state.catalog.title || "SmartCatalog";
+      el.pageSelect.innerHTML = state.pages
+        .map((page) => `<option value="${page.page}">Seite ${page.page}</option>`)
+        .join("");
+      el.openViewerBtn.onclick = () => {
+        window.open(`${API_BASE}/smartviewer-v2/index.html?catalog=${catalogId}`, "_blank", "noopener");
+      };
+
+      render();
+      setStatus(token && catalogItemId ? "Bereit." : "Vorschau-Modus: Zum Speichern Kunden-Token und Katalog-ID übergeben.");
+    }
+
+    async function save() {
+      if (!catalogItemId || !token) {
+        setStatus("Speichern nicht möglich: Kunden-Token oder Katalog-ID fehlt.");
+        return;
+      }
+
+      updateSelectedFromForm();
+      setStatus("Wird gespeichert...");
+      const response = await fetch(`${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots`, {
+        method: "PUT",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ hotspots: state.hotspots })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Hotspots konnten nicht gespeichert werden.");
+      }
+
+      const data = await response.json();
+      state.hotspots = data.hotspots || state.hotspots;
+      state.dirty = false;
+      setStatus("Gespeichert.");
+      render();
+    }
+
+    function deleteSelected() {
+      if (!state.selectedId) return;
+      state.hotspots = state.hotspots.filter((hotspot) => hotspot.id !== state.selectedId);
+      state.selectedId = "";
+      state.dirty = true;
+      render();
+      setStatus("Hotspot gelöscht.");
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    el.pageCanvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      state.drawing = true;
+      state.drawStart = getRelativePoint(event);
+      state.draft = { ...state.drawStart, width: 0, height: 0 };
+      el.pageCanvas.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      render();
+    });
+
+    el.pageCanvas.addEventListener("pointermove", (event) => {
+      if (!state.drawing || !state.drawStart) return;
+      state.draft = normalizeRect(state.drawStart, getRelativePoint(event));
+      render();
+    });
+
+    el.pageCanvas.addEventListener("pointerup", () => {
+      if (!state.drawing || !state.draft) return;
+      const rect = state.draft;
+      state.drawing = false;
+      state.draft = null;
+      createHotspot(rect);
+    });
+
+    el.pageSelect.addEventListener("change", () => {
+      state.currentPage = Number(el.pageSelect.value) || 1;
+      state.selectedId = "";
+      render();
+    });
+    document.getElementById("prevPageBtn").addEventListener("click", () => {
+      state.currentPage = Math.max(1, state.currentPage - 1);
+      state.selectedId = "";
+      render();
+    });
+    document.getElementById("nextPageBtn").addEventListener("click", () => {
+      state.currentPage = Math.min(state.pages.length, state.currentPage + 1);
+      state.selectedId = "";
+      render();
+    });
+    document.getElementById("deleteBtn").addEventListener("click", deleteSelected);
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      state.selectedId = "";
+      render();
+    });
+    el.saveBtn.addEventListener("click", () => {
+      save().catch((error) => setStatus(error.message));
+    });
+    [
+      el.typeInput,
+      el.titleInput,
+      el.urlInput,
+      el.targetPageInput,
+      el.priceInput,
+      el.descriptionInput
+    ].forEach((input) => input.addEventListener("input", updateSelectedFromForm));
+
+    load().catch((error) => setStatus(error.message));
+  </script>
+</body>
+</html>

@@ -99,6 +99,8 @@ SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 
 Hotspots koennen fuer das Kundenportal ueber `GET/PUT /api/customer/catalogs/:id/hotspots` gepflegt werden. Positionen werden relativ zur Seite gespeichert (`left`, `top`, `width`, `height` jeweils 0 bis 1), damit sie auf Handy und Desktop gleich funktionieren.
 
+Ein erster Editor ist unter `/smartviewer-v2/editor.html?catalog=<catalog_id>&id=<catalog_record_id>` verfuegbar. Er ist als Grundlage fuer die Hostinger-Dashboard-Integration gedacht.
+
 Der alte Serverordner `/flipbook` ist nicht der offizielle Anzeigeweg. Neue Flipbook-Links sollen immer ueber `/smartviewer` laufen.
 
 Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:
