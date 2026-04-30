@@ -29,6 +29,7 @@ const CATALOG_HOTSPOTS_FILE = "./catalog-hotspots.json";
 
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
+const MAX_CATALOG_UPLOAD_BYTES = 20 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 
 async function ensureRuntimeDirs() {
@@ -66,7 +67,12 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: MAX_CATALOG_UPLOAD_BYTES
+  }
+});
 
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -883,6 +889,10 @@ app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (r
 });
 
 app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "Datei größer als 20 MB" });
+  }
+
   if (error instanceof multer.MulterError || error.message === "Nur Bilddateien sind erlaubt") {
     return res.status(400).json({ error: error.message });
   }
@@ -1452,6 +1462,18 @@ app.delete("/api/customers/:id", adminAuth, async (req, res) => {
 app.get("/api/requests", adminAuth, async (req, res) => {
   const requests = await readJsonFile(REQUESTS_FILE, []);
   res.json(requests);
+});
+
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "Datei größer als 20 MB" });
+  }
+
+  if (error instanceof multer.MulterError || error.message === "Nur Bilddateien sind erlaubt") {
+    return res.status(400).json({ error: error.message });
+  }
+
+  next(error);
 });
 
 await ensureRuntimeDirs();
