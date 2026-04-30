@@ -216,36 +216,120 @@
 
     .hotspot {
       position: absolute;
-      border: 2px solid rgba(37, 99, 235, 0);
+      min-width: 34px;
+      min-height: 34px;
+      border: 2px solid rgba(37, 99, 235, 0.74);
       border-radius: 8px;
-      background: rgba(37, 99, 235, 0);
+      background: rgba(37, 99, 235, 0.10);
       cursor: pointer;
-      transition: background 120ms ease, border-color 120ms ease;
+      outline: none;
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+        0 10px 22px rgba(15, 23, 42, 0.10);
+      transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
     }
 
-    .hotspot::after {
+    .hotspot::before {
       content: "";
       position: absolute;
-      right: 8px;
-      top: 8px;
-      width: 16px;
-      height: 16px;
-      border-radius: 999px;
-      background: var(--brand);
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.32);
+      inset: -7px;
+      border: 2px solid rgba(37, 99, 235, 0.24);
+      border-radius: 12px;
       opacity: 0;
-      transform: scale(0.72);
+      pointer-events: none;
+      transform: scale(0.98);
       transition: opacity 120ms ease, transform 120ms ease;
     }
 
-    #viewer.hotspots-visible .hotspot {
-      background: rgba(37, 99, 235, 0.10);
-      border-color: rgba(37, 99, 235, 0.46);
+    .hotspot::after {
+      content: "i";
+      position: absolute;
+      right: -11px;
+      top: -11px;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 900;
+      font-family: Arial, sans-serif;
+      line-height: 1;
+      box-shadow: 0 7px 18px rgba(37, 99, 235, 0.36);
+      pointer-events: none;
     }
 
-    #viewer.hotspots-visible .hotspot::after {
+    .hotspot-label {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 9px);
+      max-width: min(220px, 80vw);
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: rgba(16, 17, 20, 0.94);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.25;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .hotspot-label::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 100%;
+      width: 10px;
+      height: 10px;
+      background: inherit;
+      transform: translate(-50%, -5px) rotate(45deg);
+    }
+
+    .hotspot:hover,
+    .hotspot:focus-visible,
+    .hotspot.active {
+      background: rgba(37, 99, 235, 0.18);
+      border-color: rgba(29, 78, 216, 0.98);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.74),
+        0 14px 30px rgba(37, 99, 235, 0.22);
+      transform: translateY(-1px);
+    }
+
+    .hotspot:hover::before,
+    .hotspot:focus-visible::before,
+    .hotspot.active::before {
       opacity: 1;
       transform: scale(1);
+    }
+
+    .hotspot:hover .hotspot-label,
+    .hotspot:focus-visible .hotspot-label,
+    .hotspot.active .hotspot-label {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    #viewer:not(.hotspots-visible) .hotspot {
+      border-color: rgba(37, 99, 235, 0);
+      background: rgba(37, 99, 235, 0);
+      box-shadow: none;
+    }
+
+    #viewer:not(.hotspots-visible) .hotspot::after,
+    #viewer:not(.hotspots-visible) .hotspot::before,
+    #viewer:not(.hotspots-visible) .hotspot-label {
+      opacity: 0;
     }
 
     #loading {
@@ -643,17 +727,27 @@
       const hotspots = state.hotspots.filter((hotspot) => Number(hotspot.page) === pageNumber);
 
       hotspots.forEach((hotspot) => {
+        const hotspotTitle = hotspot.product?.name || hotspot.title || hotspot.label || "Klickbarer Bereich";
         const button = document.createElement("button");
         button.type = "button";
         button.className = "hotspot";
-        button.title = hotspot.title || hotspot.label || "Link";
+        button.title = hotspotTitle;
+        button.setAttribute("aria-label", hotspotTitle);
         button.style.left = `${hotspot.position.left * 100}%`;
         button.style.top = `${hotspot.position.top * 100}%`;
         button.style.width = `${hotspot.position.width * 100}%`;
         button.style.height = `${hotspot.position.height * 100}%`;
+        const label = document.createElement("span");
+        label.className = "hotspot-label";
+        label.innerText = hotspotTitle;
+        button.appendChild(label);
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           if (state.moved) return;
+          document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
+            activeHotspot.classList.remove("active");
+          });
+          button.classList.add("active");
           openHotspot(hotspot);
         });
         pageEl.appendChild(button);
@@ -751,6 +845,9 @@
 
     function closeDrawer() {
       drawerEl.classList.remove("open");
+      document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
+        activeHotspot.classList.remove("active");
+      });
     }
 
     function escapeHtml(value) {
