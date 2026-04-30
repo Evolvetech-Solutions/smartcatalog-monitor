@@ -924,6 +924,7 @@ app.post("/api/customer/upload", customerAuth, upload.single("file"), async (req
 
     const generated = await generateCatalogPages(req.file.path, catalogId);
     const flipbookUrl = buildFlipbookUrl(catalogId);
+    const smartviewerV2Url = buildSmartviewerV2Url(catalogId);
 
     res.json({
       message: "Upload erfolgreich",

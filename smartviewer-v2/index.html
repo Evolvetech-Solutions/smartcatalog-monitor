@@ -770,9 +770,14 @@
         label.className = "hotspot-label";
         label.innerText = hotspotTitle;
         button.appendChild(label);
+        ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend"].forEach((eventName) => {
+          button.addEventListener(eventName, (event) => {
+            event.stopPropagation();
+          });
+        });
         button.addEventListener("click", (event) => {
           event.stopPropagation();
-          if (state.moved) return;
+          event.preventDefault();
           document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
             activeHotspot.classList.remove("active");
           });
@@ -877,7 +882,13 @@
     function openExternalUrl(url, target = "_blank") {
       const safeUrl = normalizeExternalUrl(url);
       if (!safeUrl) return;
-      window.open(safeUrl, target || "_blank", "noopener,noreferrer");
+      const link = document.createElement("a");
+      link.href = safeUrl;
+      link.target = target || "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     }
 
     function normalizeExternalUrl(url) {
