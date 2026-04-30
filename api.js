@@ -120,6 +120,26 @@ function customerAuth(req, res, next) {
   }
 }
 
+function editorAuth(req, res, next) {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.replace("Bearer ", "").trim();
+
+  if (!token) {
+    return res.status(401).json({ error: "Editor token missing" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, CUSTOMER_JWT_SECRET);
+    if (decoded.type !== "hotspot_editor") {
+      return res.status(401).json({ error: "Invalid editor token" });
+    }
+    req.editor = decoded;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid editor token" });
+  }
+}
+
 function normalizeTags(tags) {
   if (Array.isArray(tags)) {
     return tags.map((tag) => String(tag).trim()).filter(Boolean);
@@ -353,6 +373,15 @@ async function findCustomerCatalogById(customerNumber, id) {
   const urls = await readJsonFile(URLS_FILE, []);
   return urls.find(
     (item) => item.id === Number(id) && item.customer_number === customerNumber
+  );
+}
+
+async function findCustomerCatalogByCatalogId(customerNumber, catalogId) {
+  const urls = await readJsonFile(URLS_FILE, []);
+  return urls.find(
+    (item) =>
+      String(item.catalog_id || "") === String(catalogId || "") &&
+      item.customer_number === customerNumber
   );
 }
 
@@ -1060,6 +1089,47 @@ app.put("/api/customer/catalogs/:id", customerAuth, async (req, res) => {
   res.json(urls[index]);
 });
 
+app.post("/api/customer/catalogs/:id/editor-session", customerAuth, async (req, res) => {
+  const catalog = await findCustomerCatalogById(
+    req.customer.customer_number,
+    req.params.id
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  if (!catalog.catalog_id) {
+    return res.status(400).json({ error: "Katalog hat keine catalog_id" });
+  }
+
+  const editorToken = jwt.sign(
+    {
+      type: "hotspot_editor",
+      customer_number: req.customer.customer_number,
+      catalog_id: String(catalog.catalog_id),
+      catalog_item_id: catalog.id
+    },
+    CUSTOMER_JWT_SECRET,
+    { expiresIn: "2h" }
+  );
+
+  const editorUrl =
+    `${BASE_URL}/smartviewer-v2/editor.html` +
+    `?catalog=${encodeURIComponent(catalog.catalog_id)}` +
+    `&id=${encodeURIComponent(catalog.id)}` +
+    `&edit_token=${encodeURIComponent(editorToken)}`;
+
+  res.json({
+    success: true,
+    catalog_id: catalog.catalog_id,
+    id: catalog.id,
+    editor_url: editorUrl,
+    editor_token: editorToken,
+    expires_in_seconds: 7200
+  });
+});
+
 app.get("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) => {
   const catalog = await findCustomerCatalogById(
     req.customer.customer_number,
@@ -1105,6 +1175,57 @@ app.put("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) =>
   res.json({
     success: true,
     catalog_id: catalog.catalog_id,
+    hotspots
+  });
+});
+
+app.get("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots", editorAuth, async (req, res) => {
+  if (String(req.editor.catalog_id) !== String(req.params.catalogId)) {
+    return res.status(403).json({ error: "Editor token passt nicht zu diesem Katalog" });
+  }
+
+  const catalog = await findCustomerCatalogByCatalogId(
+    req.editor.customer_number,
+    req.params.catalogId
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  const hotspots = await readCatalogHotspots(catalog.catalog_id);
+
+  res.json({
+    catalog_id: catalog.catalog_id,
+    id: catalog.id,
+    catalog_title: catalog.title || catalog.name || "",
+    hotspots
+  });
+});
+
+app.put("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots", editorAuth, async (req, res) => {
+  if (String(req.editor.catalog_id) !== String(req.params.catalogId)) {
+    return res.status(403).json({ error: "Editor token passt nicht zu diesem Katalog" });
+  }
+
+  const catalog = await findCustomerCatalogByCatalogId(
+    req.editor.customer_number,
+    req.params.catalogId
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  const hotspots = await writeCatalogHotspots(
+    catalog.catalog_id,
+    req.body.hotspots || []
+  );
+
+  res.json({
+    success: true,
+    catalog_id: catalog.catalog_id,
+    id: catalog.id,
     hotspots
   });
 });
