@@ -93,6 +93,8 @@ GET /api/requests
 ```http
 POST /api/customer-login
 GET /api/customer/me
+PUT /api/customer/me
+PUT /api/customer/password
 POST /api/customer/logo
 GET /api/customer/catalogs
 POST /api/customer/upload
@@ -125,6 +127,67 @@ Liefert oeffentliche Viewer-Metadaten fuer den SmartViewer:
 ```
 
 Kundenlogo hochladen:
+
+Kundenprofil lesen:
+
+```http
+GET /api/customer/me
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Antwort:
+
+```json
+{
+  "customer_number": "0047",
+  "company_name": "Firma GmbH",
+  "first_name": "Max",
+  "last_name": "Mustermann",
+  "email": "max@example.com",
+  "phone": "+49 ...",
+  "logo_url": "https://api.evolvetech-solutions.de/customer-assets/logo.png",
+  "is_active": true
+}
+```
+
+Kundenprofil aktualisieren:
+
+```http
+PUT /api/customer/me
+Authorization: Bearer <CUSTOMER_JWT>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "company_name": "Firma GmbH",
+  "first_name": "Max",
+  "last_name": "Mustermann",
+  "email": "max@example.com",
+  "phone": "+49 ..."
+}
+```
+
+Passwort aendern:
+
+```http
+PUT /api/customer/password
+Authorization: Bearer <CUSTOMER_JWT>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "current_password": "altes-passwort",
+  "new_password": "neues-sicheres-passwort"
+}
+```
+
+Das neue Passwort muss mindestens 8 Zeichen lang sein.
 
 ```http
 POST /api/customer/logo

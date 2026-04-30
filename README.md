@@ -91,6 +91,8 @@ Wenn beim Speichern eines Katalogs nur `pdf_url` uebergeben wird, erzeugt die AP
 
 Kundenlogos koennen ueber `POST /api/customer/logo` hochgeladen werden. Der SmartViewer laedt Logo, Kundennamen und Katalogtitel ueber `GET /api/viewer-settings/:catalogId`.
 
+Kunden koennen ihre Kontaktdaten ueber `GET/PUT /api/customer/me` pflegen. Passwortaenderungen laufen ueber `PUT /api/customer/password` und erfordern das aktuelle Passwort.
+
 SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 
 ```text

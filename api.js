@@ -165,8 +165,31 @@ function normalizeCustomerNumber(value) {
   return String(value || "").trim();
 }
 
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function isValidCustomerNumber(value) {
   return /^\d{4}$/.test(String(value || "").trim());
+}
+
+function buildCustomerProfile(customer) {
+  return {
+    customer_number: customer.customer_number,
+    company_name: customer.company_name || "",
+    first_name: customer.first_name || "",
+    last_name: customer.last_name || "",
+    email: customer.email || "",
+    phone: customer.phone || "",
+    logo_url: customer.logo_url || "",
+    is_active: customer.is_active !== false,
+    created_at: customer.created_at || null,
+    updated_at: customer.updated_at || null
+  };
 }
 
 function buildViewerUrl(pdfUrl) {
@@ -841,12 +864,90 @@ app.get("/api/customer/me", customerAuth, async (req, res) => {
     return res.status(404).json({ error: "Kunde nicht gefunden" });
   }
 
-  res.json({
-    customer_number: customer.customer_number,
-    company_name: customer.company_name || "",
-    logo_url: customer.logo_url || "",
-    is_active: customer.is_active !== false
-  });
+  res.json(buildCustomerProfile(customer));
+});
+
+app.put("/api/customer/me", customerAuth, async (req, res) => {
+  const {
+    company_name,
+    first_name,
+    last_name,
+    email,
+    phone
+  } = req.body;
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const index = customers.findIndex(
+    (entry) => entry.customer_number === req.customer.customer_number
+  );
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  const nextEmail = email !== undefined ? normalizeEmail(email) : customers[index].email || "";
+  if (nextEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+    return res.status(400).json({ error: "E-Mail-Adresse ist ungültig" });
+  }
+
+  customers[index] = {
+    ...customers[index],
+    company_name:
+      company_name !== undefined ? normalizeText(company_name) : customers[index].company_name || "",
+    first_name:
+      first_name !== undefined ? normalizeText(first_name) : customers[index].first_name || "",
+    last_name:
+      last_name !== undefined ? normalizeText(last_name) : customers[index].last_name || "",
+    email: nextEmail,
+    phone: phone !== undefined ? normalizeText(phone) : customers[index].phone || "",
+    updated_at: new Date().toISOString()
+  };
+
+  await writeJsonFile(CUSTOMERS_FILE, customers);
+  res.json(buildCustomerProfile(customers[index]));
+});
+
+app.put("/api/customer/password", customerAuth, async (req, res) => {
+  const { current_password, new_password } = req.body;
+
+  if (!current_password || !new_password) {
+    return res.status(400).json({
+      error: "Aktuelles Passwort und neues Passwort sind erforderlich"
+    });
+  }
+
+  if (String(new_password).length < 8) {
+    return res.status(400).json({
+      error: "Das neue Passwort muss mindestens 8 Zeichen lang sein"
+    });
+  }
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const index = customers.findIndex(
+    (entry) => entry.customer_number === req.customer.customer_number
+  );
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  const passwordOk = await bcrypt.compare(
+    String(current_password),
+    customers[index].password_hash || ""
+  );
+
+  if (!passwordOk) {
+    return res.status(401).json({ error: "Aktuelles Passwort ist falsch" });
+  }
+
+  customers[index] = {
+    ...customers[index],
+    password_hash: await bcrypt.hash(String(new_password), 10),
+    updated_at: new Date().toISOString()
+  };
+
+  await writeJsonFile(CUSTOMERS_FILE, customers);
+  res.json({ success: true });
 });
 
 app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (req, res) => {
