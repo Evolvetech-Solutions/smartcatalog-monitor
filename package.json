@@ -17,6 +17,7 @@
     "multer": "^2.1.1",
     "nodemailer": "^8.0.7",
     "pdfjs-dist": "^4.8.69",
-    "playwright": "^1.54.2"
+    "playwright": "^1.54.2",
+    "stripe": "^22.1.0"
   }
 }

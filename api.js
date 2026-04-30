@@ -6,6 +6,7 @@ import path from "path";
 import multer from "multer";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import Stripe from "stripe";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { readJsonFile, writeJsonFile } from "./json-store.js";
@@ -17,8 +18,11 @@ const app = express();
 const PORT = process.env.API_PORT || 3001;
 const API_TOKEN = process.env.API_TOKEN || "";
 const CUSTOMER_JWT_SECRET = process.env.CUSTOMER_JWT_SECRET || "change-me";
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 const BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
+const FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || BASE_URL;
 
 const URLS_FILE = "./urls.json";
 const STATE_FILE = "./state.json";
@@ -31,6 +35,28 @@ const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
 const MAX_CATALOG_UPLOAD_BYTES = 20 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+
+const PLAN_CONFIG = {
+  starter: {
+    name: "SmartCatalog Starter",
+    priceId: process.env.STRIPE_PRICE_STARTER || "price_1TRyCQI4jptXbvXif1g4KWn3",
+    catalogLimit: 5,
+    uploadLimitMb: 20
+  },
+  business: {
+    name: "SmartCatalog Business",
+    priceId: process.env.STRIPE_PRICE_BUSINESS || "price_1TRyGkI4jptXbvXiBIXqdKPK",
+    catalogLimit: 25,
+    uploadLimitMb: 20
+  },
+  pro: {
+    name: "SmartCatalog Pro",
+    priceId: process.env.STRIPE_PRICE_PRO || "price_1TRyISI4jptXbvXi18VA4sRn",
+    catalogLimit: 100,
+    uploadLimitMb: 20
+  }
+};
 
 async function ensureRuntimeDirs() {
   await Promise.all([
@@ -41,6 +67,28 @@ async function ensureRuntimeDirs() {
 }
 
 app.use(cors());
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: "Stripe ist nicht konfiguriert" });
+  }
+
+  const signature = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, signature, STRIPE_WEBHOOK_SECRET);
+  } catch (error) {
+    return res.status(400).send(`Webhook Error: ${error.message}`);
+  }
+
+  try {
+    await handleStripeEvent(event);
+    res.json({ received: true });
+  } catch (error) {
+    console.error("Stripe Webhook Fehler:", error);
+    res.status(500).json({ error: "Stripe Webhook konnte nicht verarbeitet werden" });
+  }
+});
 app.use(express.json());
 
 app.use("/uploads", express.static(path.resolve("./uploads")));
@@ -178,6 +226,9 @@ function isValidCustomerNumber(value) {
 }
 
 function buildCustomerProfile(customer) {
+  const plan = customer.plan || "free";
+  const planConfig = PLAN_CONFIG[plan] || null;
+
   return {
     customer_number: customer.customer_number,
     company_name: customer.company_name || "",
@@ -186,6 +237,13 @@ function buildCustomerProfile(customer) {
     email: customer.email || "",
     phone: customer.phone || "",
     logo_url: customer.logo_url || "",
+    plan,
+    plan_name: planConfig?.name || "Kein aktives Abo",
+    subscription_status: customer.subscription_status || "none",
+    subscription_current_period_end:
+      customer.subscription_current_period_end || null,
+    catalog_limit: planConfig?.catalogLimit || 0,
+    upload_limit_mb: planConfig?.uploadLimitMb || 20,
     is_active: customer.is_active !== false,
     created_at: customer.created_at || null,
     updated_at: customer.updated_at || null
@@ -422,6 +480,102 @@ function buildPublicCustomer(customer) {
     company_name: customer.company_name || "",
     logo_url: customer.logo_url || ""
   };
+}
+
+function getPlanByPriceId(priceId) {
+  return Object.entries(PLAN_CONFIG).find(([, config]) => config.priceId === priceId)?.[0] || "free";
+}
+
+function getPlanConfig(plan) {
+  return PLAN_CONFIG[String(plan || "").toLowerCase()] || null;
+}
+
+function isSubscriptionActive(status) {
+  return ["active", "trialing"].includes(String(status || ""));
+}
+
+function getSubscriptionPeriodEnd(subscription) {
+  const periodEnd = subscription?.current_period_end;
+  return periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+}
+
+async function updateCustomerByStripeCustomerId(stripeCustomerId, updates) {
+  if (!stripeCustomerId) return null;
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const index = customers.findIndex(
+    (customer) => customer.stripe_customer_id === stripeCustomerId
+  );
+
+  if (index === -1) return null;
+
+  customers[index] = {
+    ...customers[index],
+    ...updates,
+    updated_at: new Date().toISOString()
+  };
+
+  await writeJsonFile(CUSTOMERS_FILE, customers);
+  return customers[index];
+}
+
+async function updateCustomerSubscription(subscription) {
+  const priceId = subscription?.items?.data?.[0]?.price?.id || "";
+  const plan = getPlanByPriceId(priceId);
+  const active = isSubscriptionActive(subscription.status);
+
+  return updateCustomerByStripeCustomerId(subscription.customer, {
+    plan: active ? plan : "free",
+    subscription_status: subscription.status || "unknown",
+    subscription_current_period_end: getSubscriptionPeriodEnd(subscription),
+    stripe_subscription_id: subscription.id || "",
+    stripe_price_id: priceId
+  });
+}
+
+async function handleStripeEvent(event) {
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    if (session.mode !== "subscription") return;
+
+    const customers = await readJsonFile(CUSTOMERS_FILE, []);
+    const index = customers.findIndex(
+      (customer) =>
+        customer.customer_number === session.client_reference_id ||
+        customer.stripe_customer_id === session.customer
+    );
+
+    if (index !== -1) {
+      customers[index] = {
+        ...customers[index],
+        stripe_customer_id: session.customer || customers[index].stripe_customer_id || "",
+        updated_at: new Date().toISOString()
+      };
+      await writeJsonFile(CUSTOMERS_FILE, customers);
+    }
+
+    if (session.subscription) {
+      const subscription = await stripe.subscriptions.retrieve(session.subscription);
+      await updateCustomerSubscription(subscription);
+    }
+
+    return;
+  }
+
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+  ) {
+    await updateCustomerSubscription(event.data.object);
+  }
+
+  if (event.type === "invoice.payment_failed") {
+    const invoice = event.data.object;
+    await updateCustomerByStripeCustomerId(invoice.customer, {
+      subscription_status: "past_due"
+    });
+  }
 }
 
 async function deleteCustomerAsset(assetUrl) {
@@ -958,6 +1112,115 @@ app.put("/api/customer/password", customerAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+app.get("/api/customer/billing/plans", customerAuth, async (req, res) => {
+  res.json({
+    plans: Object.entries(PLAN_CONFIG).map(([id, plan]) => ({
+      id,
+      name: plan.name,
+      price_id: plan.priceId,
+      catalog_limit: plan.catalogLimit,
+      upload_limit_mb: plan.uploadLimitMb
+    }))
+  });
+});
+
+app.post("/api/customer/billing/checkout", customerAuth, async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ error: "Stripe ist nicht konfiguriert" });
+  }
+
+  const requestedPlan = String(req.body.plan || "").toLowerCase();
+  const plan = getPlanConfig(requestedPlan);
+
+  if (!plan) {
+    return res.status(400).json({ error: "Unbekannter Tarif" });
+  }
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const index = customers.findIndex(
+    (entry) => entry.customer_number === req.customer.customer_number
+  );
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  let stripeCustomerId = customers[index].stripe_customer_id || "";
+
+  if (!stripeCustomerId) {
+    const stripeCustomer = await stripe.customers.create({
+      email: customers[index].email || undefined,
+      name: customers[index].company_name || customers[index].customer_number,
+      metadata: {
+        customer_number: customers[index].customer_number
+      }
+    });
+
+    stripeCustomerId = stripeCustomer.id;
+    customers[index] = {
+      ...customers[index],
+      stripe_customer_id: stripeCustomerId,
+      updated_at: new Date().toISOString()
+    };
+    await writeJsonFile(CUSTOMERS_FILE, customers);
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer: stripeCustomerId,
+    client_reference_id: customers[index].customer_number,
+    line_items: [
+      {
+        price: plan.priceId,
+        quantity: 1
+      }
+    ],
+    success_url: `${FRONTEND_BASE_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${FRONTEND_BASE_URL}/billing/cancelled`,
+    metadata: {
+      customer_number: customers[index].customer_number,
+      plan: requestedPlan
+    },
+    subscription_data: {
+      metadata: {
+        customer_number: customers[index].customer_number,
+        plan: requestedPlan
+      }
+    }
+  });
+
+  res.json({
+    checkout_url: session.url,
+    session_id: session.id
+  });
+});
+
+app.post("/api/customer/billing/portal", customerAuth, async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ error: "Stripe ist nicht konfiguriert" });
+  }
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const customer = customers.find(
+    (entry) => entry.customer_number === req.customer.customer_number
+  );
+
+  if (!customer) {
+    return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  if (!customer.stripe_customer_id) {
+    return res.status(400).json({ error: "Noch kein Stripe-Kunde vorhanden" });
+  }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: customer.stripe_customer_id,
+    return_url: `${FRONTEND_BASE_URL}/dashboard`
+  });
+
+  res.json({ portal_url: session.url });
+});
+
 app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (req, res) => {
   try {
     if (!req.file) {
@@ -1418,6 +1681,10 @@ app.get("/api/customers", adminAuth, async (req, res) => {
       customer_number: c.customer_number,
       company_name: c.company_name || "",
       logo_url: c.logo_url || "",
+      plan: c.plan || "free",
+      subscription_status: c.subscription_status || "none",
+      subscription_current_period_end: c.subscription_current_period_end || null,
+      stripe_customer_id: c.stripe_customer_id || "",
       is_active: c.is_active !== false,
       created_at: c.created_at || null,
       updated_at: c.updated_at || null
@@ -1474,6 +1741,12 @@ app.post("/api/customers", adminAuth, async (req, res) => {
     company_name,
     logo_url,
     password_hash: passwordHash,
+    plan: "free",
+    subscription_status: "none",
+    subscription_current_period_end: null,
+    stripe_customer_id: "",
+    stripe_subscription_id: "",
+    stripe_price_id: "",
     is_active,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -1538,6 +1811,10 @@ app.put("/api/customers/:id", adminAuth, async (req, res) => {
     customer_number: customers[index].customer_number,
     company_name: customers[index].company_name,
     logo_url: customers[index].logo_url || "",
+    plan: customers[index].plan || "free",
+    subscription_status: customers[index].subscription_status || "none",
+    subscription_current_period_end:
+      customers[index].subscription_current_period_end || null,
     is_active: customers[index].is_active,
     created_at: customers[index].created_at,
     updated_at: customers[index].updated_at
