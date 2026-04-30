@@ -95,6 +95,8 @@ Kunden koennen ihre Kontaktdaten ueber `GET/PUT /api/customer/me` pflegen. Passw
 
 Der Kundenlogin unter `POST /api/customer-login` akzeptiert entweder die vierstellige Kundennummer oder eine hinterlegte E-Mail-Adresse. Frontends koennen dafuer `customer_number`, `email`, `login` oder `identifier` zusammen mit `password` senden.
 
+Abos laufen ueber Stripe Billing. Kunden koennen ueber `POST /api/customer/billing/checkout` einen Checkout fuer `starter`, `business` oder `pro` starten. Stripe-Webhooks werden unter `POST /api/stripe/webhook` verarbeitet und aktualisieren `plan`, `subscription_status` und Stripe-IDs am Kunden.
+
 SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 
 ```text

@@ -95,6 +95,9 @@ POST /api/customer-login
 GET /api/customer/me
 PUT /api/customer/me
 PUT /api/customer/password
+GET /api/customer/billing/plans
+POST /api/customer/billing/checkout
+POST /api/customer/billing/portal
 POST /api/customer/logo
 GET /api/customer/catalogs
 POST /api/customer/upload
@@ -222,6 +225,73 @@ Body:
 ```
 
 Das neue Passwort muss mindestens 8 Zeichen lang sein.
+
+Billing-Tarife abrufen:
+
+```http
+GET /api/customer/billing/plans
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Stripe Checkout starten:
+
+```http
+POST /api/customer/billing/checkout
+Authorization: Bearer <CUSTOMER_JWT>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "plan": "starter"
+}
+```
+
+Moegliche Werte:
+
+- `starter`
+- `business`
+- `pro`
+
+Antwort:
+
+```json
+{
+  "checkout_url": "https://checkout.stripe.com/...",
+  "session_id": "cs_..."
+}
+```
+
+Stripe Customer Portal oeffnen:
+
+```http
+POST /api/customer/billing/portal
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Antwort:
+
+```json
+{
+  "portal_url": "https://billing.stripe.com/..."
+}
+```
+
+Stripe Webhook:
+
+```http
+POST /api/stripe/webhook
+```
+
+Der Webhook muss in Stripe mit `STRIPE_WEBHOOK_SECRET` konfiguriert werden. Relevante Events:
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.payment_failed`
 
 ```http
 POST /api/customer/logo
