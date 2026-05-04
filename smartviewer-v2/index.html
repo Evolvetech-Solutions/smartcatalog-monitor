@@ -923,6 +923,8 @@
         button.innerText = "Seite öffnen";
         button.addEventListener("click", () => goToPage(hotspot.target_page));
         drawerActionsEl.appendChild(button);
+      } else if (hotspot.type === "note") {
+        drawerBodyEl.innerHTML = `<div class="link-note">${escapeHtml(hotspot.description || hotspot.label || hotspot.title || "Keine weitere Notiz hinterlegt.")}</div>`;
       } else {
         drawerBodyEl.innerHTML = `<div class="link-note">${escapeHtml(hotspot.label || hotspot.title || "Keine weitere Aktion hinterlegt.")}</div>`;
         if (hotspot.url) addDrawerLink(hotspot.url, "Link öffnen", hotspot.target);

@@ -205,6 +205,10 @@
       margin-bottom: 10px;
     }
 
+    .field.hidden {
+      display: none;
+    }
+
     label {
       color: var(--muted);
       font-size: 12px;
@@ -375,33 +379,33 @@
             <option value="note">Notiz</option>
           </select>
         </div>
-        <div class="field">
+        <div class="field" data-field="title">
           <label for="titleInput">Titel</label>
           <input id="titleInput" placeholder="z. B. Angebot ansehen" />
         </div>
-        <div class="field">
-          <label for="urlInput">URL</label>
+        <div class="field" data-field="url">
+          <label id="urlLabel" for="urlInput">URL</label>
           <input id="urlInput" placeholder="https://..." />
         </div>
-        <div class="field">
+        <div class="field" data-field="targetPage">
           <label for="targetPageInput">Zielseite</label>
           <input id="targetPageInput" type="number" min="1" placeholder="Nur bei Seitensprung" />
         </div>
-        <div class="field">
+        <div class="field" data-field="productImageUrl">
           <label for="imageUrlInput">Produktbild URL</label>
           <input id="imageUrlInput" placeholder="https://.../produktbild.jpg" />
         </div>
-        <div class="field">
+        <div class="field" data-field="productImages">
           <label for="imageUploadInput">Produktbilder hochladen</label>
           <input id="imageUploadInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
           <p class="hint">Maximal 3 Bilder pro Produkt, je 3 MB. JPG, PNG, WEBP oder GIF.</p>
           <div id="productImageList" class="imageGrid"></div>
         </div>
-        <div class="field">
+        <div class="field" data-field="price">
           <label for="priceInput">Preis</label>
           <input id="priceInput" placeholder="z. B. 9,99 EUR" />
         </div>
-        <div class="field">
+        <div class="field" data-field="description">
           <label for="descriptionInput">Beschreibung</label>
           <textarea id="descriptionInput" placeholder="Kurze Produktbeschreibung"></textarea>
         </div>
@@ -459,13 +463,23 @@
       openViewerBtn: document.getElementById("openViewerBtn"),
       typeInput: document.getElementById("typeInput"),
       titleInput: document.getElementById("titleInput"),
+      urlLabel: document.getElementById("urlLabel"),
       urlInput: document.getElementById("urlInput"),
       targetPageInput: document.getElementById("targetPageInput"),
       imageUrlInput: document.getElementById("imageUrlInput"),
       imageUploadInput: document.getElementById("imageUploadInput"),
       productImageList: document.getElementById("productImageList"),
       priceInput: document.getElementById("priceInput"),
-      descriptionInput: document.getElementById("descriptionInput")
+      descriptionInput: document.getElementById("descriptionInput"),
+      fields: {
+        title: document.querySelector('[data-field="title"]'),
+        url: document.querySelector('[data-field="url"]'),
+        targetPage: document.querySelector('[data-field="targetPage"]'),
+        productImageUrl: document.querySelector('[data-field="productImageUrl"]'),
+        productImages: document.querySelector('[data-field="productImages"]'),
+        price: document.querySelector('[data-field="price"]'),
+        description: document.querySelector('[data-field="description"]')
+      }
     };
 
     function setStatus(message) {
@@ -474,6 +488,45 @@
 
     function canSave() {
       return Boolean(editorToken || (catalogItemId && customerToken));
+    }
+
+    function showField(fieldName, visible) {
+      el.fields[fieldName]?.classList.toggle("hidden", !visible);
+    }
+
+    function updateFieldVisibility(type = "link") {
+      const isLink = type === "link";
+      const isProduct = type === "product";
+      const isPage = type === "page";
+      const isVideo = type === "video";
+      const isNote = type === "note";
+
+      showField("title", true);
+      showField("url", isLink || isProduct || isVideo);
+      showField("targetPage", isPage);
+      showField("productImageUrl", isProduct);
+      showField("productImages", isProduct);
+      showField("price", isProduct);
+      showField("description", isProduct || isNote);
+
+      el.urlLabel.innerText = isProduct
+        ? "Produktlink / Shop URL"
+        : isVideo
+          ? "Video URL"
+          : "URL";
+      el.urlInput.placeholder = isProduct
+        ? "https://.../produkt"
+        : isVideo
+          ? "https://.../video"
+          : "https://...";
+      el.titleInput.placeholder = isPage
+        ? "z. B. Zu Seite 4"
+        : isNote
+          ? "z. B. Hinweis"
+          : "z. B. Angebot ansehen";
+      el.descriptionInput.placeholder = isNote
+        ? "Kurzer Hinweistext"
+        : "Kurze Produktbeschreibung";
     }
 
     function authHeaders(authToken = customerToken) {
@@ -627,6 +680,7 @@
       });
 
       if (!hotspot) {
+        updateFieldVisibility("link");
         el.typeInput.value = "link";
         el.titleInput.value = "";
         el.urlInput.value = "";
@@ -640,6 +694,7 @@
       }
 
       el.typeInput.value = hotspot.type || "link";
+      updateFieldVisibility(el.typeInput.value);
       el.titleInput.value = hotspot.title || "";
       el.urlInput.value = hotspot.url || hotspot.product?.url || "";
       el.targetPageInput.value = hotspot.target_page || "";
@@ -648,7 +703,9 @@
       el.imageUploadInput.value = "";
       renderProductImages(hotspot);
       el.priceInput.value = hotspot.product?.price || "";
-      el.descriptionInput.value = hotspot.product?.description || "";
+      el.descriptionInput.value = hotspot.type === "note"
+        ? hotspot.description || ""
+        : hotspot.product?.description || "";
     }
 
     function renderProductImages(hotspot) {
@@ -680,9 +737,20 @@
       hotspot.type = el.typeInput.value;
       hotspot.title = el.titleInput.value.trim();
       hotspot.label = hotspot.title;
-      hotspot.url = el.urlInput.value.trim();
-      hotspot.target = "_blank";
-      hotspot.target_page = Number(el.targetPageInput.value) || hotspot.page;
+      updateFieldVisibility(hotspot.type);
+
+      delete hotspot.url;
+      delete hotspot.target;
+      delete hotspot.target_page;
+
+      if (hotspot.type === "link" || hotspot.type === "video") {
+        hotspot.url = el.urlInput.value.trim();
+        hotspot.target = "_blank";
+      }
+
+      if (hotspot.type === "page") {
+        hotspot.target_page = Number(el.targetPageInput.value) || hotspot.page;
+      }
 
       if (hotspot.type === "product") {
         const manualImageUrl = el.imageUrlInput.value.trim();
@@ -700,8 +768,14 @@
           images: finalImages,
           url: el.urlInput.value.trim()
         };
+        hotspot.url = el.urlInput.value.trim();
+        hotspot.target = "_blank";
+      } else if (hotspot.type === "note") {
+        delete hotspot.product;
+        hotspot.description = el.descriptionInput.value.trim();
       } else {
         delete hotspot.product;
+        delete hotspot.description;
       }
 
       el.imageUploadInput.disabled = hotspot.type !== "product" || !canSave();
