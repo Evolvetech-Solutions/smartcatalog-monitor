@@ -107,6 +107,8 @@ Hotspots koennen fuer das Kundenportal ueber `GET/PUT /api/customer/catalogs/:id
 
 Ein erster Editor ist unter `/smartviewer-v2/editor.html?catalog=<catalog_id>&id=<catalog_record_id>` verfuegbar. Fuer die Hostinger-Dashboard-Integration sollte das Portal vorher `POST /api/customer/catalogs/:id/editor-session` aufrufen und die zurueckgegebene `editor_url` oeffnen. Dieser Link enthaelt einen kurzlebigen, kataloggebundenen Bearbeitungs-Token.
 
+Produkt-Hotspots unterstuetzen bis zu 3 Produktbilder. Uploads laufen im Editor ueber `POST /api/smartviewer-v2/editor/catalogs/:catalogId/hotspots/:hotspotId/images`, maximal 3 MB pro Bild.
+
 Der alte Serverordner `/flipbook` ist nicht der offizielle Anzeigeweg. Neue Flipbook-Links sollen immer ueber `/smartviewer` laufen.
 
 Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:
