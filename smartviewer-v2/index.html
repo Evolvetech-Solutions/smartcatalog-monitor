@@ -474,13 +474,23 @@
       gap: 12px;
     }
 
+    .product-images {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      gap: 8px;
+    }
+
     .product-image {
       width: 100%;
-      max-height: 220px;
+      height: 160px;
       object-fit: contain;
       border: 1px solid var(--line);
       border-radius: 10px;
       background: var(--surface-soft);
+    }
+
+    .product-images:has(.product-image:only-child) .product-image {
+      height: 220px;
     }
 
     .product-price {
@@ -884,12 +894,22 @@
       drawerActionsEl.innerHTML = "";
 
       if (hotspot.type === "product") {
-        const productImage = hotspot.product?.image_url || hotspot.image_url || "";
+        const productImages = getProductImages(hotspot);
         const productDescription =
           hotspot.product?.description || hotspot.description || "Produktdetails";
         drawerBodyEl.innerHTML = `
           <div class="product-card">
-            ${productImage ? `<img class="product-image" src="${escapeAttribute(productImage)}" alt="${escapeAttribute(hotspot.product?.name || hotspot.title || "Produkt")}" />` : ""}
+            ${productImages.length ? `
+              <div class="product-images">
+                ${productImages.map((imageUrl, index) => `
+                  <img
+                    class="product-image"
+                    src="${escapeAttribute(imageUrl)}"
+                    alt="${escapeAttribute(`${hotspot.product?.name || hotspot.title || "Produkt"} ${index + 1}`)}"
+                  />
+                `).join("")}
+              </div>
+            ` : ""}
             ${hotspot.product?.price ? `<div class="product-price">${escapeHtml(hotspot.product.price)}</div>` : ""}
             <div class="product-description">${escapeHtml(productDescription)}</div>
           </div>
@@ -909,6 +929,17 @@
       }
 
       drawerEl.classList.add("open");
+    }
+
+    function getProductImages(hotspot) {
+      const images = Array.isArray(hotspot?.product?.images) ? hotspot.product.images : [];
+      const legacyImage = hotspot?.product?.image_url || hotspot?.image_url || "";
+
+      return [...images, legacyImage]
+        .map((imageUrl) => String(imageUrl || "").trim())
+        .filter(Boolean)
+        .filter((imageUrl, index, allImages) => allImages.indexOf(imageUrl) === index)
+        .slice(0, 3);
     }
 
     function openExternalUrl(url, target = "_blank") {

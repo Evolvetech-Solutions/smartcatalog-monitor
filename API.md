@@ -378,6 +378,7 @@ PUT-Body:
         "price": "9,99 EUR",
         "description": "Kurzbeschreibung",
         "image_url": "",
+        "images": [],
         "url": "https://example.com/produkt",
         "sku": "ABC-123"
       }
@@ -393,6 +394,30 @@ Unterstuetzte Hotspot-Typen:
 - `page`: Sprung zu einer anderen Seite
 - `video`: Videolink
 - `note`: reine Info
+
+Produktbilder koennen direkt am Produkt-Hotspot hochgeladen werden. Pro Hotspot sind maximal 3 Bilder erlaubt, je Bild maximal 3 MB. Erlaubte Formate: JPG, PNG, WEBP und GIF.
+
+```http
+POST /api/customer/catalogs/:id/hotspots/:hotspotId/images
+DELETE /api/customer/catalogs/:id/hotspots/:hotspotId/images
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Der Upload nutzt `multipart/form-data` mit dem Feld `images`. Der Delete-Request erwartet JSON:
+
+```json
+{
+  "image_url": "https://api.evolvetech-solutions.de/customer-assets/products/datei.jpg"
+}
+```
+
+Der kurzlebige Hotspot-Editor nutzt dieselbe Funktion ueber:
+
+```http
+POST /api/smartviewer-v2/editor/catalogs/:catalogId/hotspots/:hotspotId/images
+DELETE /api/smartviewer-v2/editor/catalogs/:catalogId/hotspots/:hotspotId/images
+Authorization: Bearer <EDIT_TOKEN>
+```
 
 Editor fuer Hostinger/Kundenportal:
 

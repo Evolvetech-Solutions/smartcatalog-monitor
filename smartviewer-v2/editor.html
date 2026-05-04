@@ -276,6 +276,47 @@
       line-height: 1.45;
     }
 
+    .imageGrid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .imageTile {
+      position: relative;
+      aspect-ratio: 1;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      overflow: hidden;
+    }
+
+    .imageTile img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .imageTile button {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      min-height: 26px;
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      background: rgba(15, 23, 42, 0.82);
+      color: #fff;
+      box-shadow: none;
+    }
+
+    input[type="file"] {
+      padding: 10px;
+      background: #fff;
+      cursor: pointer;
+    }
+
     @media (max-width: 980px) {
       body {
         overflow: auto;
@@ -351,6 +392,12 @@
           <input id="imageUrlInput" placeholder="https://.../produktbild.jpg" />
         </div>
         <div class="field">
+          <label for="imageUploadInput">Produktbilder hochladen</label>
+          <input id="imageUploadInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+          <p class="hint">Maximal 3 Bilder pro Produkt, je 3 MB. JPG, PNG, WEBP oder GIF.</p>
+          <div id="productImageList" class="imageGrid"></div>
+        </div>
+        <div class="field">
           <label for="priceInput">Preis</label>
           <input id="priceInput" placeholder="z. B. 9,99 EUR" />
         </div>
@@ -415,6 +462,8 @@
       urlInput: document.getElementById("urlInput"),
       targetPageInput: document.getElementById("targetPageInput"),
       imageUrlInput: document.getElementById("imageUrlInput"),
+      imageUploadInput: document.getElementById("imageUploadInput"),
+      productImageList: document.getElementById("productImageList"),
       priceInput: document.getElementById("priceInput"),
       descriptionInput: document.getElementById("descriptionInput")
     };
@@ -437,6 +486,14 @@
       }
 
       return `${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots`;
+    }
+
+    function productImageEndpoint(hotspotId) {
+      if (editorToken) {
+        return `${API_BASE}/api/smartviewer-v2/editor/catalogs/${catalogId}/hotspots/${encodeURIComponent(hotspotId)}/images`;
+      }
+
+      return `${API_BASE}/api/customer/catalogs/${catalogItemId}/hotspots/${encodeURIComponent(hotspotId)}/images`;
     }
 
     function hotspotAuthHeaders() {
@@ -473,6 +530,17 @@
       const width = Math.abs(end.x - start.x);
       const height = Math.abs(end.y - start.y);
       return { left, top, width, height };
+    }
+
+    function productImages(hotspot) {
+      const images = Array.isArray(hotspot?.product?.images) ? hotspot.product.images : [];
+      const legacyImage = hotspot?.product?.image_url || hotspot?.image_url || "";
+
+      return [...images, legacyImage]
+        .map((imageUrl) => String(imageUrl || "").trim())
+        .filter(Boolean)
+        .filter((imageUrl, index, allImages) => allImages.indexOf(imageUrl) === index)
+        .slice(0, 3);
     }
 
     function render() {
@@ -551,6 +619,7 @@
         el.urlInput,
         el.targetPageInput,
         el.imageUrlInput,
+        el.imageUploadInput,
         el.priceInput,
         el.descriptionInput
       ].forEach((input) => {
@@ -563,6 +632,8 @@
         el.urlInput.value = "";
         el.targetPageInput.value = "";
         el.imageUrlInput.value = "";
+        el.imageUploadInput.value = "";
+        renderProductImages(null);
         el.priceInput.value = "";
         el.descriptionInput.value = "";
         return;
@@ -573,8 +644,33 @@
       el.urlInput.value = hotspot.url || hotspot.product?.url || "";
       el.targetPageInput.value = hotspot.target_page || "";
       el.imageUrlInput.value = hotspot.product?.image_url || hotspot.image_url || "";
+      el.imageUploadInput.disabled = disabled || hotspot.type !== "product" || !canSave();
+      el.imageUploadInput.value = "";
+      renderProductImages(hotspot);
       el.priceInput.value = hotspot.product?.price || "";
       el.descriptionInput.value = hotspot.product?.description || "";
+    }
+
+    function renderProductImages(hotspot) {
+      const images = productImages(hotspot);
+      el.productImageList.innerHTML = "";
+
+      images.forEach((imageUrl) => {
+        const tile = document.createElement("div");
+        tile.className = "imageTile";
+        tile.innerHTML = `
+          <img src="${escapeAttribute(imageUrl)}" alt="Produktbild" />
+          <button type="button" title="Bild entfernen">X</button>
+        `;
+        tile.querySelector("button").addEventListener("click", () => {
+          removeProductImage(imageUrl).catch((error) => setStatus(error.message));
+        });
+        el.productImageList.appendChild(tile);
+      });
+
+      if (!images.length) {
+        el.productImageList.innerHTML = `<p class="hint">Noch keine Produktbilder hinterlegt.</p>`;
+      }
     }
 
     function updateSelectedFromForm() {
@@ -589,18 +685,27 @@
       hotspot.target_page = Number(el.targetPageInput.value) || hotspot.page;
 
       if (hotspot.type === "product") {
+        const manualImageUrl = el.imageUrlInput.value.trim();
+        const images = productImages(hotspot);
+        const finalImages = manualImageUrl
+          ? [manualImageUrl, ...images.filter((imageUrl) => imageUrl !== manualImageUrl)].slice(0, 3)
+          : images;
+
         hotspot.product = {
           ...(hotspot.product || {}),
           name: hotspot.title,
           price: el.priceInput.value.trim(),
           description: el.descriptionInput.value.trim(),
-          image_url: el.imageUrlInput.value.trim(),
+          image_url: finalImages[0] || "",
+          images: finalImages,
           url: el.urlInput.value.trim()
         };
       } else {
         delete hotspot.product;
       }
 
+      el.imageUploadInput.disabled = hotspot.type !== "product" || !canSave();
+      renderProductImages(hotspot);
       state.dirty = true;
       renderList();
     }
@@ -673,6 +778,12 @@
 
       updateSelectedFromForm();
       setStatus("Wird gespeichert...");
+      await persistHotspots();
+      setStatus("Gespeichert.");
+      render();
+    }
+
+    async function persistHotspots() {
       const response = await fetch(hotspotEndpoint(), {
         method: "PUT",
         headers: {
@@ -690,7 +801,98 @@
       const data = await response.json();
       state.hotspots = data.hotspots || state.hotspots;
       state.dirty = false;
-      setStatus("Gespeichert.");
+    }
+
+    async function uploadProductImages(files) {
+      const hotspot = currentHotspot();
+      if (!hotspot) {
+        setStatus("Bitte zuerst einen Hotspot auswaehlen.");
+        return;
+      }
+
+      if (hotspot.type !== "product") {
+        setStatus("Bild-Upload ist nur fuer Produkt-Hotspots moeglich.");
+        return;
+      }
+
+      if (!canSave()) {
+        setStatus("Upload nicht moeglich: Editor-Link aus dem Kundenportal oeffnen.");
+        return;
+      }
+
+      const fileList = Array.from(files || []);
+      if (!fileList.length) return;
+
+      if (productImages(hotspot).length + fileList.length > 3) {
+        el.imageUploadInput.value = "";
+        setStatus("Maximal 3 Produktbilder pro Hotspot erlaubt.");
+        return;
+      }
+
+      updateSelectedFromForm();
+      await persistHotspots();
+      state.selectedId = hotspot.id;
+      const formData = new FormData();
+      fileList.forEach((file) => formData.append("images", file));
+
+      setStatus("Produktbilder werden hochgeladen...");
+      const response = await fetch(productImageEndpoint(hotspot.id), {
+        method: "POST",
+        headers: hotspotAuthHeaders(),
+        body: formData
+      });
+
+      el.imageUploadInput.value = "";
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Produktbilder konnten nicht hochgeladen werden.");
+      }
+
+      const data = await response.json();
+      state.hotspots = data.hotspots || state.hotspots;
+      state.selectedId = hotspot.id;
+      state.dirty = false;
+      setStatus("Produktbilder gespeichert.");
+      render();
+    }
+
+    async function removeProductImage(imageUrl) {
+      const hotspot = currentHotspot();
+      if (!hotspot) return;
+
+      if (!canSave()) {
+        const images = productImages(hotspot).filter((currentUrl) => currentUrl !== imageUrl);
+        hotspot.product = {
+          ...(hotspot.product || {}),
+          images,
+          image_url: images[0] || ""
+        };
+        state.dirty = true;
+        render();
+        setStatus("Bild lokal entfernt. Zum Speichern Editor-Link aus dem Kundenportal oeffnen.");
+        return;
+      }
+
+      const response = await fetch(productImageEndpoint(hotspot.id), {
+        method: "DELETE",
+        headers: {
+          ...hotspotAuthHeaders(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ image_url: imageUrl })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Produktbild konnte nicht entfernt werden.");
+      }
+
+      const data = await response.json();
+      state.hotspots = data.hotspots || state.hotspots;
+      state.selectedId = hotspot.id;
+      state.dirty = false;
+      setStatus("Produktbild entfernt.");
       render();
     }
 
@@ -710,6 +912,10 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+    }
+
+    function escapeAttribute(value) {
+      return escapeHtml(value);
     }
 
     el.pageCanvas.addEventListener("pointerdown", (event) => {
@@ -768,6 +974,9 @@
       el.priceInput,
       el.descriptionInput
     ].forEach((input) => input.addEventListener("input", updateSelectedFromForm));
+    el.imageUploadInput.addEventListener("change", () => {
+      uploadProductImages(el.imageUploadInput.files).catch((error) => setStatus(error.message));
+    });
 
     load().catch((error) => setStatus(error.message));
   </script>

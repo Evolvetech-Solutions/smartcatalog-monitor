@@ -33,7 +33,10 @@ const CATALOG_HOTSPOTS_FILE = "./catalog-hotspots.json";
 
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
+const PRODUCT_IMAGE_DIR = path.join(CUSTOMER_ASSETS_DIR, "products");
 const MAX_CATALOG_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_PRODUCT_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_PRODUCT_IMAGES_PER_HOTSPOT = 3;
 const execFileAsync = promisify(execFile);
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
@@ -62,7 +65,8 @@ async function ensureRuntimeDirs() {
   await Promise.all([
     fs.mkdir("./uploads", { recursive: true }),
     fs.mkdir(CATALOG_PAGES_DIR, { recursive: true }),
-    fs.mkdir(CUSTOMER_ASSETS_DIR, { recursive: true })
+    fs.mkdir(CUSTOMER_ASSETS_DIR, { recursive: true }),
+    fs.mkdir(PRODUCT_IMAGE_DIR, { recursive: true })
   ]);
 }
 
@@ -384,6 +388,19 @@ function normalizeHotspotPosition(position = {}) {
   };
 }
 
+function normalizeProductImages(product = {}, hotspot = {}) {
+  const images = Array.isArray(product.images)
+    ? product.images
+    : [];
+  const legacyImage = product.image_url || hotspot.image_url || "";
+
+  return [...images, legacyImage]
+    .map((imageUrl) => String(imageUrl || "").trim())
+    .filter(Boolean)
+    .filter((imageUrl, index, allImages) => allImages.indexOf(imageUrl) === index)
+    .slice(0, MAX_PRODUCT_IMAGES_PER_HOTSPOT);
+}
+
 function normalizeHotspots(hotspots) {
   if (!Array.isArray(hotspots)) return [];
 
@@ -413,11 +430,14 @@ function normalizeHotspots(hotspots) {
     }
 
     if (type === "product") {
+      const productImages = normalizeProductImages(hotspot.product, hotspot);
+
       normalized.product = {
         name: String(hotspot.product?.name || hotspot.title || "").trim(),
         price: String(hotspot.product?.price || "").trim(),
         description: String(hotspot.product?.description || "").trim(),
-        image_url: String(hotspot.product?.image_url || "").trim(),
+        image_url: productImages[0] || "",
+        images: productImages,
         url: String(hotspot.product?.url || hotspot.url || "").trim(),
         sku: String(hotspot.product?.sku || "").trim()
       };
@@ -593,6 +613,128 @@ async function deleteCustomerAsset(assetUrl) {
   }
 }
 
+function productImageUrl(file) {
+  return `${BASE_URL}/customer-assets/products/${file.filename}`;
+}
+
+function productAssetPathFromUrl(assetUrl) {
+  if (!assetUrl || !assetUrl.includes("/customer-assets/products/")) return "";
+
+  const fileName = assetUrl.split("/customer-assets/products/")[1];
+  if (!fileName || fileName.includes("..") || fileName.includes("/") || fileName.includes("\\")) {
+    return "";
+  }
+
+  return path.join(PRODUCT_IMAGE_DIR, fileName);
+}
+
+async function deleteProductImageAsset(assetUrl) {
+  const filePath = productAssetPathFromUrl(assetUrl);
+  if (!filePath) return;
+
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn("Produktbild konnte nicht geloescht werden:", error.message);
+    }
+  }
+}
+
+async function deleteUploadedProductFiles(files = []) {
+  await Promise.all(
+    files.map((file) =>
+      fs.unlink(file.path).catch((error) => {
+        if (error.code !== "ENOENT") {
+          console.warn("Produktbild Upload konnte nicht aufgeraeumt werden:", error.message);
+        }
+      })
+    )
+  );
+}
+
+function findHotspotById(hotspots, hotspotId) {
+  return hotspots.find((hotspot) => String(hotspot.id) === String(hotspotId));
+}
+
+async function appendProductImages(catalogId, hotspotId, files) {
+  if (!files?.length) {
+    return { status: 400, body: { error: "Keine Produktbilder hochgeladen" } };
+  }
+
+  const hotspots = await readCatalogHotspots(catalogId);
+  const hotspot = findHotspotById(hotspots, hotspotId);
+
+  if (!hotspot) {
+    await deleteUploadedProductFiles(files);
+    return { status: 404, body: { error: "Hotspot nicht gefunden" } };
+  }
+
+  if (hotspot.type !== "product") {
+    await deleteUploadedProductFiles(files);
+    return { status: 400, body: { error: "Bilder koennen nur bei Produkt-Hotspots hochgeladen werden" } };
+  }
+
+  const existingImages = normalizeProductImages(hotspot.product, hotspot);
+  if (existingImages.length + files.length > MAX_PRODUCT_IMAGES_PER_HOTSPOT) {
+    await deleteUploadedProductFiles(files);
+    return {
+      status: 400,
+      body: { error: "Maximal 3 Produktbilder pro Hotspot erlaubt" }
+    };
+  }
+
+  const uploadedImages = files.map(productImageUrl);
+  hotspot.product = {
+    ...(hotspot.product || {}),
+    images: [...existingImages, ...uploadedImages],
+    image_url: existingImages[0] || uploadedImages[0] || ""
+  };
+
+  const savedHotspots = await writeCatalogHotspots(catalogId, hotspots);
+  const savedHotspot = findHotspotById(savedHotspots, hotspotId);
+
+  return {
+    status: 201,
+    body: {
+      success: true,
+      images: uploadedImages,
+      hotspot: savedHotspot,
+      hotspots: savedHotspots
+    }
+  };
+}
+
+async function removeProductImage(catalogId, hotspotId, imageUrl) {
+  const hotspots = await readCatalogHotspots(catalogId);
+  const hotspot = findHotspotById(hotspots, hotspotId);
+
+  if (!hotspot) {
+    return { status: 404, body: { error: "Hotspot nicht gefunden" } };
+  }
+
+  const existingImages = normalizeProductImages(hotspot.product, hotspot);
+  const remainingImages = existingImages.filter((currentUrl) => currentUrl !== imageUrl);
+
+  hotspot.product = {
+    ...(hotspot.product || {}),
+    images: remainingImages,
+    image_url: remainingImages[0] || ""
+  };
+
+  const savedHotspots = await writeCatalogHotspots(catalogId, hotspots);
+  await deleteProductImageAsset(imageUrl);
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      hotspot: findHotspotById(savedHotspots, hotspotId),
+      hotspots: savedHotspots
+    }
+  };
+}
+
 async function deleteRelatedFiles(item) {
   if (item?.pdf_url) {
     try {
@@ -617,7 +759,12 @@ async function deleteRelatedFiles(item) {
 
     try {
       const allHotspots = await readJsonFile(CATALOG_HOTSPOTS_FILE, {});
-      if (allHotspots[String(item.catalog_id)]) {
+      const catalogHotspots = allHotspots[String(item.catalog_id)];
+      if (Array.isArray(catalogHotspots)) {
+        const productImages = catalogHotspots.flatMap((hotspot) =>
+          normalizeProductImages(hotspot.product, hotspot)
+        );
+        await Promise.all(productImages.map(deleteProductImageAsset));
         delete allHotspots[String(item.catalog_id)];
         await writeJsonFile(CATALOG_HOTSPOTS_FILE, allHotspots);
       }
@@ -681,6 +828,36 @@ app.get("/api/viewer-settings/:catalogId", async (req, res) => {
     title: catalog.title || catalog.name || "",
     customer: buildPublicCustomer(customer)
   });
+});
+
+function imageFileFilter(req, file, cb) {
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+  if (!allowedTypes.has(file.mimetype)) {
+    return cb(new Error("Nur JPG, PNG, WEBP oder GIF sind erlaubt"));
+  }
+
+  cb(null, true);
+}
+
+const productImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, PRODUCT_IMAGE_DIR);
+  },
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    cb(null, `${unique}-${safeName}`);
+  }
+});
+
+const productImageUpload = multer({
+  storage: productImageStorage,
+  limits: {
+    fileSize: MAX_PRODUCT_IMAGE_BYTES,
+    files: MAX_PRODUCT_IMAGES_PER_HOTSPOT
+  },
+  fileFilter: imageFileFilter
 });
 
 app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
@@ -1262,10 +1439,24 @@ app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (r
 
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    return res.status(413).json({ error: "Datei größer als 20 MB" });
+    const uploadError = req.path.includes("/hotspots/") && req.path.includes("/images")
+      ? "Produktbild größer als 3 MB"
+      : "Datei größer als 20 MB";
+    return res.status(413).json({ error: uploadError });
   }
 
-  if (error instanceof multer.MulterError || error.message === "Nur Bilddateien sind erlaubt") {
+  if (
+    error instanceof multer.MulterError &&
+    (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE")
+  ) {
+    return res.status(400).json({ error: "Maximal 3 Produktbilder pro Hotspot erlaubt" });
+  }
+
+  if (
+    error instanceof multer.MulterError ||
+    error.message === "Nur Bilddateien sind erlaubt" ||
+    error.message === "Nur JPG, PNG, WEBP oder GIF sind erlaubt"
+  ) {
     return res.status(400).json({ error: error.message });
   }
 
@@ -1562,6 +1753,50 @@ app.put("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) =>
   });
 });
 
+app.post(
+  "/api/customer/catalogs/:id/hotspots/:hotspotId/images",
+  customerAuth,
+  productImageUpload.array("images", MAX_PRODUCT_IMAGES_PER_HOTSPOT),
+  async (req, res) => {
+    const catalog = await findCustomerCatalogById(
+      req.customer.customer_number,
+      req.params.id
+    );
+
+    if (!catalog) {
+      await deleteUploadedProductFiles(req.files);
+      return res.status(404).json({ error: "Katalog nicht gefunden" });
+    }
+
+    if (!catalog.catalog_id) {
+      await deleteUploadedProductFiles(req.files);
+      return res.status(400).json({ error: "Katalog hat keine catalog_id" });
+    }
+
+    const result = await appendProductImages(catalog.catalog_id, req.params.hotspotId, req.files);
+    res.status(result.status).json(result.body);
+  }
+);
+
+app.delete("/api/customer/catalogs/:id/hotspots/:hotspotId/images", customerAuth, async (req, res) => {
+  const catalog = await findCustomerCatalogById(
+    req.customer.customer_number,
+    req.params.id
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  const imageUrl = String(req.body?.image_url || "").trim();
+  if (!imageUrl) {
+    return res.status(400).json({ error: "image_url fehlt" });
+  }
+
+  const result = await removeProductImage(catalog.catalog_id, req.params.hotspotId, imageUrl);
+  res.status(result.status).json(result.body);
+});
+
 app.get("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots", editorAuth, async (req, res) => {
   if (String(req.editor.catalog_id) !== String(req.params.catalogId)) {
     return res.status(403).json({ error: "Editor token passt nicht zu diesem Katalog" });
@@ -1611,6 +1846,54 @@ app.put("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots", editorAuth, a
     id: catalog.id,
     hotspots
   });
+});
+
+app.post(
+  "/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots/:hotspotId/images",
+  editorAuth,
+  productImageUpload.array("images", MAX_PRODUCT_IMAGES_PER_HOTSPOT),
+  async (req, res) => {
+    if (String(req.editor.catalog_id) !== String(req.params.catalogId)) {
+      await deleteUploadedProductFiles(req.files);
+      return res.status(403).json({ error: "Editor token passt nicht zu diesem Katalog" });
+    }
+
+    const catalog = await findCustomerCatalogByCatalogId(
+      req.editor.customer_number,
+      req.params.catalogId
+    );
+
+    if (!catalog) {
+      await deleteUploadedProductFiles(req.files);
+      return res.status(404).json({ error: "Katalog nicht gefunden" });
+    }
+
+    const result = await appendProductImages(catalog.catalog_id, req.params.hotspotId, req.files);
+    res.status(result.status).json(result.body);
+  }
+);
+
+app.delete("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots/:hotspotId/images", editorAuth, async (req, res) => {
+  if (String(req.editor.catalog_id) !== String(req.params.catalogId)) {
+    return res.status(403).json({ error: "Editor token passt nicht zu diesem Katalog" });
+  }
+
+  const catalog = await findCustomerCatalogByCatalogId(
+    req.editor.customer_number,
+    req.params.catalogId
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  const imageUrl = String(req.body?.image_url || "").trim();
+  if (!imageUrl) {
+    return res.status(400).json({ error: "image_url fehlt" });
+  }
+
+  const result = await removeProductImage(catalog.catalog_id, req.params.hotspotId, imageUrl);
+  res.status(result.status).json(result.body);
 });
 
 app.delete("/api/customer/catalogs/:id", customerAuth, async (req, res) => {
@@ -1853,10 +2136,24 @@ app.get("/api/requests", adminAuth, async (req, res) => {
 
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    return res.status(413).json({ error: "Datei größer als 20 MB" });
+    const uploadError = req.path.includes("/hotspots/") && req.path.includes("/images")
+      ? "Produktbild größer als 3 MB"
+      : "Datei größer als 20 MB";
+    return res.status(413).json({ error: uploadError });
   }
 
-  if (error instanceof multer.MulterError || error.message === "Nur Bilddateien sind erlaubt") {
+  if (
+    error instanceof multer.MulterError &&
+    (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE")
+  ) {
+    return res.status(400).json({ error: "Maximal 3 Produktbilder pro Hotspot erlaubt" });
+  }
+
+  if (
+    error instanceof multer.MulterError ||
+    error.message === "Nur Bilddateien sind erlaubt" ||
+    error.message === "Nur JPG, PNG, WEBP oder GIF sind erlaubt"
+  ) {
     return res.status(400).json({ error: error.message });
   }
 
