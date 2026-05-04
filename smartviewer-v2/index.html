@@ -933,15 +933,13 @@
         `;
         if (hotspot.product?.url || hotspot.url) addDrawerLink(hotspot.product?.url || hotspot.url, "Zum Shop");
       } else if (hotspot.type === "link") {
-        const linkTitle = hotspot.title || hotspot.label || "Externer Link";
         drawerBodyEl.innerHTML = `
           <div class="link-card">
-            <div class="link-card-title">${escapeHtml(linkTitle)}</div>
-            <div>Dieser Link oeffnet eine externe Seite.</div>
+            <div>Dieser Link öffnet eine externe Seite.</div>
             ${hotspot.url ? `<div class="link-card-url">${escapeHtml(normalizeExternalUrl(hotspot.url))}</div>` : ""}
           </div>
         `;
-        if (hotspot.url) addDrawerLink(hotspot.url, "Link oeffnen", hotspot.target);
+        if (hotspot.url) addDrawerLink(hotspot.url, "Link öffnen", hotspot.target);
       } else if (hotspot.type === "page") {
         drawerBodyEl.innerText = `Springe zu Seite ${hotspot.target_page}.`;
         const button = document.createElement("button");
