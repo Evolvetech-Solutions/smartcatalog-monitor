@@ -429,6 +429,10 @@ function normalizeHotspots(hotspots) {
       normalized.target_page = Math.max(1, Number.parseInt(hotspot.target_page, 10) || page);
     }
 
+    if (type === "note") {
+      normalized.description = String(hotspot.description || "").trim();
+    }
+
     if (type === "product") {
       const productImages = normalizeProductImages(hotspot.product, hotspot);
 
