@@ -388,6 +388,18 @@ function normalizeHotspotPosition(position = {}) {
   };
 }
 
+function normalizeHotspotStyle(style = {}) {
+  const isHexColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || "").trim());
+  const fillOpacity = Math.max(0, Math.min(0.5, Number(style.fill_opacity ?? 0.12)));
+
+  return {
+    fill_color: isHexColor(style.fill_color) ? String(style.fill_color).trim() : "#2563eb",
+    border_color: isHexColor(style.border_color) ? String(style.border_color).trim() : "#2563eb",
+    fill_opacity: Number(fillOpacity.toFixed(2)),
+    border_width: Math.max(1, Math.min(4, Number.parseInt(style.border_width, 10) || 2))
+  };
+}
+
 function normalizeProductImages(product = {}, hotspot = {}) {
   const images = Array.isArray(product.images)
     ? product.images
@@ -417,6 +429,7 @@ function normalizeHotspots(hotspots) {
       label: String(hotspot.label || "").trim(),
       show_icon: hotspot.show_icon !== false,
       position: normalizeHotspotPosition(hotspot.position),
+      style: normalizeHotspotStyle(hotspot.style),
       updated_at: new Date().toISOString()
     };
 

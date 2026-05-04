@@ -218,9 +218,9 @@
       position: absolute;
       min-width: 34px;
       min-height: 34px;
-      border: 2px solid rgba(37, 99, 235, 0.74);
+      border: var(--hotspot-border-width, 2px) solid var(--hotspot-border-color, rgba(37, 99, 235, 0.74));
       border-radius: 8px;
-      background: rgba(37, 99, 235, 0.10);
+      background: var(--hotspot-fill, rgba(37, 99, 235, 0.10));
       cursor: pointer;
       outline: none;
       box-shadow:
@@ -233,7 +233,7 @@
       content: "";
       position: absolute;
       inset: -7px;
-      border: 2px solid rgba(37, 99, 235, 0.24);
+      border: 2px solid var(--hotspot-glow, rgba(37, 99, 235, 0.24));
       border-radius: 12px;
       opacity: 0;
       pointer-events: none;
@@ -298,8 +298,8 @@
     .hotspot:hover,
     .hotspot:focus-visible,
     .hotspot.active {
-      background: rgba(37, 99, 235, 0.18);
-      border-color: rgba(29, 78, 216, 0.98);
+      background: var(--hotspot-fill-active, rgba(37, 99, 235, 0.18));
+      border-color: var(--hotspot-border-color, rgba(29, 78, 216, 0.98));
       box-shadow:
         inset 0 0 0 1px rgba(255, 255, 255, 0.74),
         0 14px 30px rgba(37, 99, 235, 0.22);
@@ -793,6 +793,7 @@
         button.style.top = `${hotspot.position.top * 100}%`;
         button.style.width = `${hotspot.position.width * 100}%`;
         button.style.height = `${hotspot.position.height * 100}%`;
+        applyHotspotStyle(button, hotspot.style);
         const label = document.createElement("span");
         label.className = "hotspot-label";
         label.innerText = hotspotTitle;
@@ -813,6 +814,36 @@
         });
         pageEl.appendChild(button);
       });
+    }
+
+    function hexToRgba(hex, opacity) {
+      const safeHex = /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#2563eb";
+      const value = Number.parseInt(safeHex.slice(1), 16);
+      const red = (value >> 16) & 255;
+      const green = (value >> 8) & 255;
+      const blue = value & 255;
+      const alpha = Math.max(0, Math.min(0.5, Number(opacity) || 0));
+
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    }
+
+    function normalizeHotspotStyle(style = {}) {
+      return {
+        fill_color: /^#[0-9a-f]{6}$/i.test(style.fill_color) ? style.fill_color : "#2563eb",
+        border_color: /^#[0-9a-f]{6}$/i.test(style.border_color) ? style.border_color : "#2563eb",
+        fill_opacity: Math.max(0, Math.min(0.5, Number(style.fill_opacity ?? 0.10))),
+        border_width: Math.max(1, Math.min(4, Number.parseInt(style.border_width, 10) || 2))
+      };
+    }
+
+    function applyHotspotStyle(element, style = {}) {
+      const normalized = normalizeHotspotStyle(style);
+
+      element.style.setProperty("--hotspot-fill", hexToRgba(normalized.fill_color, normalized.fill_opacity));
+      element.style.setProperty("--hotspot-fill-active", hexToRgba(normalized.fill_color, Math.min(0.5, normalized.fill_opacity + 0.08)));
+      element.style.setProperty("--hotspot-border-color", normalized.border_color);
+      element.style.setProperty("--hotspot-border-width", `${normalized.border_width}px`);
+      element.style.setProperty("--hotspot-glow", hexToRgba(normalized.border_color, 0.24));
     }
 
     function getPageAspect(page) {

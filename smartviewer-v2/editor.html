@@ -160,15 +160,31 @@
 
     .hotspot {
       position: absolute;
-      border: 2px solid rgba(37, 99, 235, 0.78);
+      border: var(--hotspot-border-width, 2px) solid var(--hotspot-border-color, #2563eb);
       border-radius: 6px;
-      background: rgba(37, 99, 235, 0.12);
+      background: var(--hotspot-fill, rgba(37, 99, 235, 0.12));
       cursor: pointer;
     }
 
     .hotspot.selected {
       border-color: #f97316;
       background: rgba(249, 115, 22, 0.16);
+    }
+
+    .controlGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    input[type="color"] {
+      min-height: 38px;
+      padding: 4px;
+      cursor: pointer;
+    }
+
+    input[type="range"] {
+      padding: 0;
     }
 
     .draft {
@@ -409,6 +425,28 @@
           <label for="descriptionInput">Beschreibung</label>
           <textarea id="descriptionInput" placeholder="Kurze Produktbeschreibung"></textarea>
         </div>
+        <div class="field" data-field="appearance">
+          <label>Darstellung</label>
+          <div class="controlGrid">
+            <div>
+              <label for="fillColorInput">Fuellfarbe</label>
+              <input id="fillColorInput" type="color" value="#2563eb" />
+            </div>
+            <div>
+              <label for="borderColorInput">Rahmenfarbe</label>
+              <input id="borderColorInput" type="color" value="#2563eb" />
+            </div>
+          </div>
+          <label for="fillOpacityInput">Fuell-Transparenz: <span id="fillOpacityValue">12%</span></label>
+          <input id="fillOpacityInput" type="range" min="0" max="50" value="12" />
+          <label for="borderWidthInput">Rahmenstaerke</label>
+          <select id="borderWidthInput">
+            <option value="1">Fein</option>
+            <option value="2" selected>Normal</option>
+            <option value="3">Stark</option>
+            <option value="4">Sehr stark</option>
+          </select>
+        </div>
         <div class="row">
           <button type="button" class="danger" id="deleteBtn">Löschen</button>
           <button type="button" class="secondary" id="clearBtn">Auswahl aufheben</button>
@@ -471,6 +509,11 @@
       productImageList: document.getElementById("productImageList"),
       priceInput: document.getElementById("priceInput"),
       descriptionInput: document.getElementById("descriptionInput"),
+      fillColorInput: document.getElementById("fillColorInput"),
+      borderColorInput: document.getElementById("borderColorInput"),
+      fillOpacityInput: document.getElementById("fillOpacityInput"),
+      fillOpacityValue: document.getElementById("fillOpacityValue"),
+      borderWidthInput: document.getElementById("borderWidthInput"),
       fields: {
         title: document.querySelector('[data-field="title"]'),
         url: document.querySelector('[data-field="url"]'),
@@ -478,7 +521,8 @@
         productImageUrl: document.querySelector('[data-field="productImageUrl"]'),
         productImages: document.querySelector('[data-field="productImages"]'),
         price: document.querySelector('[data-field="price"]'),
-        description: document.querySelector('[data-field="description"]')
+        description: document.querySelector('[data-field="description"]'),
+        appearance: document.querySelector('[data-field="appearance"]')
       }
     };
 
@@ -585,6 +629,35 @@
       return { left, top, width, height };
     }
 
+    function hexToRgba(hex, opacity) {
+      const safeHex = /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#2563eb";
+      const value = Number.parseInt(safeHex.slice(1), 16);
+      const red = (value >> 16) & 255;
+      const green = (value >> 8) & 255;
+      const blue = value & 255;
+      const alpha = Math.max(0, Math.min(0.5, Number(opacity) || 0));
+
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    }
+
+    function normalizeStyle(style = {}) {
+      return {
+        fill_color: /^#[0-9a-f]{6}$/i.test(style.fill_color) ? style.fill_color : "#2563eb",
+        border_color: /^#[0-9a-f]{6}$/i.test(style.border_color) ? style.border_color : "#2563eb",
+        fill_opacity: Math.max(0, Math.min(0.5, Number(style.fill_opacity ?? 0.12))),
+        border_width: Math.max(1, Math.min(4, Number.parseInt(style.border_width, 10) || 2))
+      };
+    }
+
+    function applyHotspotStyle(element, style = {}, isSelected = false) {
+      const normalized = normalizeStyle(style);
+      const fillOpacity = isSelected ? Math.min(0.5, normalized.fill_opacity + 0.08) : normalized.fill_opacity;
+
+      element.style.setProperty("--hotspot-fill", hexToRgba(normalized.fill_color, fillOpacity));
+      element.style.setProperty("--hotspot-border-color", isSelected ? "#f97316" : normalized.border_color);
+      element.style.setProperty("--hotspot-border-width", `${normalized.border_width}px`);
+    }
+
     function productImages(hotspot) {
       const images = Array.isArray(hotspot?.product?.images) ? hotspot.product.images : [];
       const legacyImage = hotspot?.product?.image_url || hotspot?.image_url || "";
@@ -612,6 +685,7 @@
         button.style.top = `${hotspot.position.top * 100}%`;
         button.style.width = `${hotspot.position.width * 100}%`;
         button.style.height = `${hotspot.position.height * 100}%`;
+        applyHotspotStyle(button, hotspot.style, hotspot.id === state.selectedId);
         button.title = hotspot.title || hotspot.type;
         button.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -674,7 +748,11 @@
         el.imageUrlInput,
         el.imageUploadInput,
         el.priceInput,
-        el.descriptionInput
+        el.descriptionInput,
+        el.fillColorInput,
+        el.borderColorInput,
+        el.fillOpacityInput,
+        el.borderWidthInput
       ].forEach((input) => {
         input.disabled = disabled;
       });
@@ -690,6 +768,7 @@
         renderProductImages(null);
         el.priceInput.value = "";
         el.descriptionInput.value = "";
+        fillStyleForm();
         return;
       }
 
@@ -706,6 +785,16 @@
       el.descriptionInput.value = hotspot.type === "note"
         ? hotspot.description || ""
         : hotspot.product?.description || "";
+      fillStyleForm(hotspot);
+    }
+
+    function fillStyleForm(hotspot = null) {
+      const style = normalizeStyle(hotspot?.style || {});
+      el.fillColorInput.value = style.fill_color;
+      el.borderColorInput.value = style.border_color;
+      el.fillOpacityInput.value = String(Math.round(style.fill_opacity * 100));
+      el.fillOpacityValue.innerText = `${el.fillOpacityInput.value}%`;
+      el.borderWidthInput.value = String(style.border_width);
     }
 
     function renderProductImages(hotspot) {
@@ -738,6 +827,13 @@
       hotspot.title = el.titleInput.value.trim();
       hotspot.label = hotspot.title;
       updateFieldVisibility(hotspot.type);
+      hotspot.style = {
+        fill_color: el.fillColorInput.value,
+        border_color: el.borderColorInput.value,
+        fill_opacity: Number(el.fillOpacityInput.value) / 100,
+        border_width: Number(el.borderWidthInput.value) || 2
+      };
+      el.fillOpacityValue.innerText = `${el.fillOpacityInput.value}%`;
 
       delete hotspot.url;
       delete hotspot.target;
@@ -798,6 +894,7 @@
         label: "Neuer Link",
         show_icon: true,
         position: rect,
+        style: normalizeStyle(),
         url: "",
         target: "_blank"
       };
@@ -1046,7 +1143,11 @@
       el.targetPageInput,
       el.imageUrlInput,
       el.priceInput,
-      el.descriptionInput
+      el.descriptionInput,
+      el.fillColorInput,
+      el.borderColorInput,
+      el.fillOpacityInput,
+      el.borderWidthInput
     ].forEach((input) => input.addEventListener("input", updateSelectedFromForm));
     el.imageUploadInput.addEventListener("change", () => {
       uploadProductImages(el.imageUploadInput.files).catch((error) => setStatus(error.message));
