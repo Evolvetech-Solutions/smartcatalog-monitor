@@ -531,6 +531,85 @@ function isSubscriptionActive(status) {
   return ["active", "trialing"].includes(String(status || ""));
 }
 
+function countCustomerCatalogs(urls, customerNumber) {
+  return urls.filter((item) => item.customer_number === customerNumber).length;
+}
+
+function buildSubscriptionBlockedResponse(customer, urls) {
+  if (!customer || customer.is_active === false) {
+    return {
+      status: 403,
+      body: {
+        error: "Kundenkonto ist nicht aktiv",
+        code: "CUSTOMER_INACTIVE"
+      }
+    };
+  }
+
+  const plan = String(customer?.plan || "free").toLowerCase();
+  const planConfig = getPlanConfig(plan);
+  const subscriptionStatus = customer?.subscription_status || "none";
+  const catalogCount = countCustomerCatalogs(urls, customer.customer_number);
+
+  if (!planConfig || !isSubscriptionActive(subscriptionStatus)) {
+    return {
+      status: 402,
+      body: {
+        error: "Fuer neue Kataloge ist ein aktives SmartCatalog Abo erforderlich.",
+        code: "SUBSCRIPTION_REQUIRED",
+        plan,
+        subscription_status: subscriptionStatus,
+        catalog_count: catalogCount,
+        catalog_limit: planConfig?.catalogLimit || 0,
+        upgrade_required: true
+      }
+    };
+  }
+
+  if (catalogCount >= planConfig.catalogLimit) {
+    return {
+      status: 403,
+      body: {
+        error: `Dein ${planConfig.name} Abo erlaubt maximal ${planConfig.catalogLimit} Kataloge. Bitte loesche einen Katalog oder upgrade dein Abo.`,
+        code: "CATALOG_LIMIT_REACHED",
+        plan,
+        subscription_status: subscriptionStatus,
+        catalog_count: catalogCount,
+        catalog_limit: planConfig.catalogLimit,
+        upgrade_required: true
+      }
+    };
+  }
+
+  return null;
+}
+
+async function requireCatalogCreationEntitlement(req, res, next) {
+  try {
+    const customers = await readJsonFile(CUSTOMERS_FILE, []);
+    const customer = customers.find(
+      (entry) => entry.customer_number === req.customer.customer_number
+    );
+
+    if (!customer) {
+      return res.status(404).json({ error: "Kunde nicht gefunden" });
+    }
+
+    const urls = await readJsonFile(URLS_FILE, []);
+    const blocked = buildSubscriptionBlockedResponse(customer, urls);
+
+    if (blocked) {
+      return res.status(blocked.status).json(blocked.body);
+    }
+
+    req.customerRecord = customer;
+    req.customerCatalogCount = countCustomerCatalogs(urls, customer.customer_number);
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
 function getSubscriptionPeriodEnd(subscription) {
   const periodEnd = subscription?.current_period_end;
   return periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
@@ -613,6 +692,14 @@ async function handleStripeEvent(event) {
       subscription_status: "past_due"
     });
   }
+
+  if (event.type === "invoice.paid") {
+    const invoice = event.data.object;
+    if (invoice.subscription) {
+      const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+      await updateCustomerSubscription(subscription);
+    }
+  }
 }
 
 async function deleteCustomerAsset(assetUrl) {
@@ -668,6 +755,18 @@ async function deleteUploadedProductFiles(files = []) {
       })
     )
   );
+}
+
+async function deleteUploadedFile(file) {
+  if (!file?.path) return;
+
+  try {
+    await fs.unlink(file.path);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn("Upload konnte nicht aufgeraeumt werden:", error.message);
+    }
+  }
 }
 
 function findHotspotById(hotspots, hotspotId) {
@@ -1318,6 +1417,39 @@ app.get("/api/customer/billing/plans", customerAuth, async (req, res) => {
   });
 });
 
+app.get("/api/customer/billing/usage", customerAuth, async (req, res) => {
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const customer = customers.find(
+    (entry) => entry.customer_number === req.customer.customer_number
+  );
+
+  if (!customer) {
+    return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  const urls = await readJsonFile(URLS_FILE, []);
+  const plan = String(customer.plan || "free").toLowerCase();
+  const planConfig = getPlanConfig(plan);
+  const catalogCount = countCustomerCatalogs(urls, customer.customer_number);
+  const subscriptionStatus = customer.subscription_status || "none";
+
+  res.json({
+    plan,
+    plan_name: planConfig?.name || "Kein aktives Abo",
+    subscription_status: subscriptionStatus,
+    subscription_active: Boolean(planConfig && isSubscriptionActive(subscriptionStatus)),
+    catalog_count: catalogCount,
+    catalog_limit: planConfig?.catalogLimit || 0,
+    catalogs_remaining: planConfig
+      ? Math.max(0, planConfig.catalogLimit - catalogCount)
+      : 0,
+    upload_limit_mb: planConfig?.uploadLimitMb || 20,
+    can_create_catalog:
+      Boolean(planConfig && isSubscriptionActive(subscriptionStatus)) &&
+      catalogCount < planConfig.catalogLimit
+  });
+});
+
 app.post("/api/customer/billing/checkout", customerAuth, async (req, res) => {
   if (!stripe) {
     return res.status(503).json({ error: "Stripe ist nicht konfiguriert" });
@@ -1492,10 +1624,21 @@ app.get("/api/customer/catalogs", customerAuth, async (req, res) => {
   res.json(customerUrls.map((item) => buildStatusEntry(item, states, history)));
 });
 
-app.post("/api/customer/upload", customerAuth, upload.single("file"), async (req, res) => {
+app.post("/api/customer/upload", customerAuth, requireCatalogCreationEntitlement, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "Keine Datei hochgeladen" });
+    }
+
+    const plan = getPlanConfig(req.customerRecord?.plan);
+    const uploadLimitBytes = (plan?.uploadLimitMb || 20) * 1024 * 1024;
+    if (req.file.size > uploadLimitBytes) {
+      await deleteUploadedFile(req.file);
+      return res.status(413).json({
+        error: `Datei groesser als ${plan?.uploadLimitMb || 20} MB`,
+        code: "UPLOAD_LIMIT_EXCEEDED",
+        upload_limit_mb: plan?.uploadLimitMb || 20
+      });
     }
 
     const catalogId = Date.now();
@@ -1526,7 +1669,7 @@ app.post("/api/customer/upload", customerAuth, upload.single("file"), async (req
   }
 });
 
-app.post("/api/customer/catalogs", customerAuth, async (req, res) => {
+app.post("/api/customer/catalogs", customerAuth, requireCatalogCreationEntitlement, async (req, res) => {
   const {
     name,
     title,

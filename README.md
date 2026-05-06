@@ -97,6 +97,8 @@ Der Kundenlogin unter `POST /api/customer-login` akzeptiert entweder die vierste
 
 Abos laufen ueber Stripe Billing. Kunden koennen ueber `POST /api/customer/billing/checkout` einen Checkout fuer `starter`, `business` oder `pro` starten. Stripe-Webhooks werden unter `POST /api/stripe/webhook` verarbeitet und aktualisieren `plan`, `subscription_status` und Stripe-IDs am Kunden.
 
+Neue Kundenkataloge sind backendseitig an ein aktives Abo gebunden. `GET /api/customer/billing/usage` liefert Plan, Status, Kataloglimit, aktuelle Nutzung und `can_create_catalog`. Upload und Kataloganlage blockieren fehlende Abos (`SUBSCRIPTION_REQUIRED`) und erreichte Limits (`CATALOG_LIMIT_REACHED`).
+
 SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 
 ```text

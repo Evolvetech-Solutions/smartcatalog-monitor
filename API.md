@@ -96,6 +96,7 @@ GET /api/customer/me
 PUT /api/customer/me
 PUT /api/customer/password
 GET /api/customer/billing/plans
+GET /api/customer/billing/usage
 POST /api/customer/billing/checkout
 POST /api/customer/billing/portal
 POST /api/customer/logo
@@ -233,6 +234,31 @@ GET /api/customer/billing/plans
 Authorization: Bearer <CUSTOMER_JWT>
 ```
 
+Aktuelle Abo-Nutzung abrufen:
+
+```http
+GET /api/customer/billing/usage
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Antwort:
+
+```json
+{
+  "plan": "starter",
+  "plan_name": "SmartCatalog Starter",
+  "subscription_status": "active",
+  "subscription_active": true,
+  "catalog_count": 3,
+  "catalog_limit": 5,
+  "catalogs_remaining": 2,
+  "upload_limit_mb": 20,
+  "can_create_catalog": true
+}
+```
+
+Neue Kataloge koennen nur erstellt werden, wenn `subscription_active` true ist und `catalog_count` kleiner als `catalog_limit` ist. Bei ueberschrittenem Limit antwortet die API mit `CATALOG_LIMIT_REACHED`, bei fehlendem/ungueltigem Abo mit `SUBSCRIPTION_REQUIRED`.
+
 Stripe Checkout starten:
 
 ```http
@@ -291,6 +317,7 @@ Der Webhook muss in Stripe mit `STRIPE_WEBHOOK_SECRET` konfiguriert werden. Rele
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
+- `invoice.paid`
 - `invoice.payment_failed`
 
 ```http
