@@ -311,7 +311,7 @@ Authorization: Bearer <CUSTOMER_JWT>
 Content-Type: multipart/form-data
 ```
 
-Der Upload muss die PDF-Datei im Formularfeld `file` senden. Produktbilder nutzen dagegen eigene Hotspot-Endpunkte mit dem Feld `images`.
+Der Upload sollte die PDF-Datei im Formularfeld `file` senden. Damit Builder-Frontends robuster funktionieren, akzeptiert die API auch andere Feldnamen und verarbeitet die erste hochgeladene PDF-Datei. Produktbilder nutzen dagegen eigene Hotspot-Endpunkte mit dem Feld `images`.
 
 Stripe-Status manuell synchronisieren:
 
