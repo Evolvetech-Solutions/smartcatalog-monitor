@@ -890,6 +890,31 @@ async function deleteUploadedFile(file) {
   }
 }
 
+function getUploadedFiles(req) {
+  if (req.file) return [req.file];
+  if (Array.isArray(req.files)) return req.files;
+  if (req.files && typeof req.files === "object") {
+    return Object.values(req.files).flat();
+  }
+  return [];
+}
+
+function isPdfUpload(file) {
+  const originalName = String(file?.originalname || "").toLowerCase();
+  const mimeType = String(file?.mimetype || "").toLowerCase();
+  return originalName.endsWith(".pdf") || mimeType === "application/pdf";
+}
+
+async function getCatalogUploadFile(req) {
+  const files = getUploadedFiles(req);
+  const catalogFile = files.find(isPdfUpload) || null;
+  const unusedFiles = files.filter((file) => file !== catalogFile);
+
+  await Promise.all(unusedFiles.map(deleteUploadedFile));
+
+  return catalogFile;
+}
+
 function findHotspotById(hotspots, hotspotId) {
   return hotspots.find((hotspot) => String(hotspot.id) === String(hotspotId));
 }
@@ -1138,17 +1163,19 @@ app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
   });
 });
 
-app.post("/api/upload", adminAuth, upload.single("file"), async (req, res) => {
+app.post("/api/upload", adminAuth, upload.any(), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Keine Datei hochgeladen" });
+    const catalogFile = await getCatalogUploadFile(req);
+
+    if (!catalogFile) {
+      return res.status(400).json({ error: "Keine PDF-Datei hochgeladen" });
     }
 
     const catalogId = Date.now();
-    const fileUrl = `${BASE_URL}/uploads/${req.file.filename}`;
+    const fileUrl = `${BASE_URL}/uploads/${catalogFile.filename}`;
     const viewerUrl = buildViewerUrl(fileUrl);
 
-    const generated = await generateCatalogPages(req.file.path, catalogId);
+    const generated = await generateCatalogPages(catalogFile.path, catalogId);
     const flipbookUrl = buildFlipbookUrl(catalogId);
     const smartviewerV2Url = buildSmartviewerV2Url(catalogId);
 
@@ -1161,8 +1188,8 @@ app.post("/api/upload", adminAuth, upload.single("file"), async (req, res) => {
       flipbook_url: flipbookUrl,
       smartviewer_v2_url: smartviewerV2Url,
       pages: generated.pages,
-      filename: req.file.filename,
-      originalname: req.file.originalname
+      filename: catalogFile.filename,
+      originalname: catalogFile.originalname
     });
   } catch (error) {
     console.error("Upload Fehler:", error);
@@ -1886,16 +1913,18 @@ app.get("/api/customer/catalogs", customerAuth, async (req, res) => {
   res.json(customerUrls.map((item) => buildStatusEntry(item, states, history)));
 });
 
-app.post("/api/customer/upload", customerAuth, requireCatalogCreationEntitlement, upload.single("file"), async (req, res) => {
+app.post("/api/customer/upload", customerAuth, requireCatalogCreationEntitlement, upload.any(), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Keine Datei hochgeladen" });
+    const catalogFile = await getCatalogUploadFile(req);
+
+    if (!catalogFile) {
+      return res.status(400).json({ error: "Keine PDF-Datei hochgeladen" });
     }
 
     const plan = getPlanConfig(req.customerRecord?.plan);
     const uploadLimitBytes = (plan?.uploadLimitMb || 20) * 1024 * 1024;
-    if (req.file.size > uploadLimitBytes) {
-      await deleteUploadedFile(req.file);
+    if (catalogFile.size > uploadLimitBytes) {
+      await deleteUploadedFile(catalogFile);
       return res.status(413).json({
         error: `Datei groesser als ${plan?.uploadLimitMb || 20} MB`,
         code: "UPLOAD_LIMIT_EXCEEDED",
@@ -1904,10 +1933,10 @@ app.post("/api/customer/upload", customerAuth, requireCatalogCreationEntitlement
     }
 
     const catalogId = Date.now();
-    const fileUrl = `${BASE_URL}/uploads/${req.file.filename}`;
+    const fileUrl = `${BASE_URL}/uploads/${catalogFile.filename}`;
     const viewerUrl = buildViewerUrl(fileUrl);
 
-    const generated = await generateCatalogPages(req.file.path, catalogId);
+    const generated = await generateCatalogPages(catalogFile.path, catalogId);
     const flipbookUrl = buildFlipbookUrl(catalogId);
     const smartviewerV2Url = buildSmartviewerV2Url(catalogId);
 
@@ -1919,8 +1948,8 @@ app.post("/api/customer/upload", customerAuth, requireCatalogCreationEntitlement
       flipbook_url: flipbookUrl,
       smartviewer_v2_url: smartviewerV2Url,
       pages: generated.pages,
-      filename: req.file.filename,
-      originalname: req.file.originalname
+      filename: catalogFile.filename,
+      originalname: catalogFile.originalname
     });
   } catch (error) {
     console.error("Customer Upload Fehler:", error);
