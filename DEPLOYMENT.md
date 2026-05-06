@@ -83,6 +83,42 @@ Nicht committen:
 - `state.json`
 - `urls.json`
 
+## Stripe Live-Schaltung
+
+In `.env` muessen fuer Stripe gesetzt sein:
+
+```env
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_STARTER=price_...
+STRIPE_PRICE_BUSINESS=price_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_CHECKOUT_SUCCESS_URL=https://<frontend-domain>/billing/success?session_id={CHECKOUT_SESSION_ID}
+STRIPE_CHECKOUT_CANCEL_URL=https://<frontend-domain>/billing/cancelled
+STRIPE_PORTAL_RETURN_URL=https://<frontend-domain>/dashboard
+STRIPE_AUTOMATIC_TAX=false
+STRIPE_ALLOW_PROMOTION_CODES=false
+```
+
+Stripe Webhook-URL:
+
+```text
+https://api.evolvetech-solutions.de/api/stripe/webhook
+```
+
+Relevante Events:
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `customer.subscription.paused`
+- `customer.subscription.resumed`
+- `customer.deleted`
+- `invoice.paid`
+- `invoice.payment_succeeded`
+- `invoice.payment_failed`
+
 Die JSON-Dateien werden atomar geschrieben. Vor jedem erfolgreichen Ersetzen wird eine Backup-Kopie unter `data-backups/` angelegt.
 
 Vor groesseren Aenderungen ein Server-Backup erstellen:

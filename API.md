@@ -97,6 +97,7 @@ PUT /api/customer/me
 PUT /api/customer/password
 GET /api/customer/billing/plans
 GET /api/customer/billing/usage
+POST /api/customer/billing/sync
 POST /api/customer/billing/checkout
 POST /api/customer/billing/portal
 POST /api/customer/logo
@@ -249,6 +250,8 @@ Antwort:
   "plan_name": "SmartCatalog Starter",
   "subscription_status": "active",
   "subscription_active": true,
+  "subscription_current_period_end": "2026-06-01T12:00:00.000Z",
+  "subscription_cancel_at_period_end": false,
   "catalog_count": 3,
   "catalog_limit": 5,
   "catalogs_remaining": 2,
@@ -258,6 +261,15 @@ Antwort:
 ```
 
 Neue Kataloge koennen nur erstellt werden, wenn `subscription_active` true ist und `catalog_count` kleiner als `catalog_limit` ist. Bei ueberschrittenem Limit antwortet die API mit `CATALOG_LIMIT_REACHED`, bei fehlendem/ungueltigem Abo mit `SUBSCRIPTION_REQUIRED`.
+
+Stripe-Status manuell synchronisieren:
+
+```http
+POST /api/customer/billing/sync
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Das ist fuer Support und Kundenportal hilfreich, falls ein Webhook verzoegert war. Die API liest die aktuelle Subscription direkt aus Stripe und aktualisiert `plan`, `subscription_status`, `subscription_current_period_end`, `subscription_cancel_at_period_end`, `stripe_subscription_id` und `stripe_price_id`.
 
 Stripe Checkout starten:
 
@@ -317,7 +329,11 @@ Der Webhook muss in Stripe mit `STRIPE_WEBHOOK_SECRET` konfiguriert werden. Rele
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
+- `customer.subscription.paused`
+- `customer.subscription.resumed`
+- `customer.deleted`
 - `invoice.paid`
+- `invoice.payment_succeeded`
 - `invoice.payment_failed`
 
 ```http
