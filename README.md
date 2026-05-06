@@ -93,7 +93,7 @@ Kundenlogos koennen ueber `POST /api/customer/logo` hochgeladen werden. Der Smar
 
 Kunden koennen ihre Kontaktdaten ueber `GET/PUT /api/customer/me` pflegen. Passwortaenderungen laufen ueber `PUT /api/customer/password` und erfordern das aktuelle Passwort.
 
-Der Kundenlogin unter `POST /api/customer-login` akzeptiert entweder die vierstellige Kundennummer oder eine hinterlegte E-Mail-Adresse. Frontends koennen dafuer `customer_number`, `email`, `login` oder `identifier` zusammen mit `password` senden.
+Der Kundenlogin unter `POST /api/customer-login` akzeptiert entweder die vierstellige Kundennummer oder eine hinterlegte E-Mail-Adresse. Frontends koennen dafuer `customer_number`, `email`, `login` oder `identifier` zusammen mit `password` senden. Neue Kunden koennen ueber `POST /api/customer/register` mit Firmenname, Vorname, Nachname, E-Mail und Passwort registriert werden; die API erzeugt automatisch eine freie Kundennummer und gibt direkt einen Customer-JWT zurueck.
 
 Abos laufen ueber Stripe Billing. Kunden koennen ueber `POST /api/customer/billing/checkout` einen Checkout fuer `starter`, `business` oder `pro` starten. Stripe-Webhooks werden unter `POST /api/stripe/webhook` verarbeitet und aktualisieren `plan`, `subscription_status` und Stripe-IDs am Kunden.
 

@@ -236,8 +236,39 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+}
+
 function isValidCustomerNumber(value) {
   return /^\d{4}$/.test(String(value || "").trim());
+}
+
+function signCustomerToken(customer) {
+  return jwt.sign(
+    {
+      customer_number: customer.customer_number,
+      company_name: customer.company_name || ""
+    },
+    CUSTOMER_JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+function generateCustomerNumber(customers) {
+  const used = new Set(customers.map((customer) => String(customer.customer_number || "")));
+
+  for (let attempt = 0; attempt < 9000; attempt += 1) {
+    const candidate = String(Math.floor(1000 + Math.random() * 9000));
+    if (!used.has(candidate)) return candidate;
+  }
+
+  for (let number = 1000; number <= 9999; number += 1) {
+    const candidate = String(number);
+    if (!used.has(candidate)) return candidate;
+  }
+
+  throw new Error("Keine freie Kundennummer verfuegbar");
 }
 
 function buildCustomerProfile(customer) {
@@ -1375,14 +1406,7 @@ app.post("/api/customer-login", async (req, res) => {
     return res.status(401).json({ error: "Login fehlgeschlagen" });
   }
 
-  const token = jwt.sign(
-    {
-      customer_number: customer.customer_number,
-      company_name: customer.company_name || ""
-    },
-    CUSTOMER_JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+  const token = signCustomerToken(customer);
 
   res.json({
     success: true,
@@ -1392,6 +1416,95 @@ app.post("/api/customer-login", async (req, res) => {
       company_name: customer.company_name || "",
       email: customer.email || ""
     }
+  });
+});
+
+app.post("/api/customer/register", async (req, res) => {
+  const {
+    company_name,
+    first_name,
+    last_name,
+    email,
+    password,
+    plan
+  } = req.body;
+
+  const companyName = normalizeText(company_name);
+  const firstName = normalizeText(first_name);
+  const lastName = normalizeText(last_name);
+  const normalizedEmail = normalizeEmail(email);
+  const requestedPlan = String(plan || "").trim().toLowerCase();
+
+  if (!companyName) {
+    return res.status(400).json({ error: "Firmenname ist erforderlich" });
+  }
+
+  if (!firstName) {
+    return res.status(400).json({ error: "Vorname ist erforderlich" });
+  }
+
+  if (!lastName) {
+    return res.status(400).json({ error: "Nachname ist erforderlich" });
+  }
+
+  if (!isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ error: "Gueltige E-Mail-Adresse ist erforderlich" });
+  }
+
+  if (!password || String(password).length < 8) {
+    return res.status(400).json({
+      error: "Passwort ist erforderlich und muss mindestens 8 Zeichen haben"
+    });
+  }
+
+  if (requestedPlan && !PLAN_CONFIG[requestedPlan]) {
+    return res.status(400).json({ error: "Ungueltiger Tarif", code: "INVALID_PLAN" });
+  }
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const emailExists = customers.some(
+    (entry) => normalizeEmail(entry.email) === normalizedEmail && entry.is_active !== false
+  );
+
+  if (emailExists) {
+    return res.status(409).json({
+      error: "Diese E-Mail-Adresse ist bereits registriert",
+      code: "EMAIL_ALREADY_EXISTS"
+    });
+  }
+
+  const now = new Date().toISOString();
+  const newCustomer = {
+    id: Date.now(),
+    customer_number: generateCustomerNumber(customers),
+    company_name: companyName,
+    first_name: firstName,
+    last_name: lastName,
+    email: normalizedEmail,
+    phone: "",
+    logo_url: "",
+    password_hash: await bcrypt.hash(String(password), 10),
+    plan: "free",
+    subscription_status: "none",
+    subscription_current_period_end: null,
+    subscription_cancel_at_period_end: false,
+    stripe_customer_id: "",
+    stripe_subscription_id: "",
+    stripe_price_id: "",
+    is_active: true,
+    signup_requested_plan: requestedPlan || "",
+    created_at: now,
+    updated_at: now
+  };
+
+  customers.push(newCustomer);
+  await writeJsonFile(CUSTOMERS_FILE, customers);
+
+  res.status(201).json({
+    success: true,
+    token: signCustomerToken(newCustomer),
+    customer: buildCustomerProfile(newCustomer),
+    requested_plan: requestedPlan || null
   });
 });
 
