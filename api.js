@@ -20,9 +20,20 @@ const API_TOKEN = process.env.API_TOKEN || "";
 const CUSTOMER_JWT_SECRET = process.env.CUSTOMER_JWT_SECRET || "change-me";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_AUTOMATIC_TAX = process.env.STRIPE_AUTOMATIC_TAX === "true";
+const STRIPE_ALLOW_PROMOTION_CODES = process.env.STRIPE_ALLOW_PROMOTION_CODES === "true";
 
 const BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
 const FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || BASE_URL;
+const STRIPE_CHECKOUT_SUCCESS_URL =
+  process.env.STRIPE_CHECKOUT_SUCCESS_URL ||
+  `${FRONTEND_BASE_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+const STRIPE_CHECKOUT_CANCEL_URL =
+  process.env.STRIPE_CHECKOUT_CANCEL_URL ||
+  `${FRONTEND_BASE_URL}/billing/cancelled`;
+const STRIPE_PORTAL_RETURN_URL =
+  process.env.STRIPE_PORTAL_RETURN_URL ||
+  `${FRONTEND_BASE_URL}/dashboard`;
 
 const URLS_FILE = "./urls.json";
 const STATE_FILE = "./state.json";
@@ -246,6 +257,7 @@ function buildCustomerProfile(customer) {
     subscription_status: customer.subscription_status || "none",
     subscription_current_period_end:
       customer.subscription_current_period_end || null,
+    subscription_cancel_at_period_end: Boolean(customer.subscription_cancel_at_period_end),
     catalog_limit: planConfig?.catalogLimit || 0,
     upload_limit_mb: planConfig?.uploadLimitMb || 20,
     is_active: customer.is_active !== false,
@@ -635,21 +647,97 @@ async function updateCustomerByStripeCustomerId(stripeCustomerId, updates) {
   return customers[index];
 }
 
-async function updateCustomerSubscription(subscription) {
+async function updateCustomerByCustomerNumber(customerNumber, updates) {
+  if (!customerNumber) return null;
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const index = customers.findIndex(
+    (customer) => customer.customer_number === String(customerNumber)
+  );
+
+  if (index === -1) return null;
+
+  customers[index] = {
+    ...customers[index],
+    ...updates,
+    updated_at: new Date().toISOString()
+  };
+
+  await writeJsonFile(CUSTOMERS_FILE, customers);
+  return customers[index];
+}
+
+function buildSubscriptionUpdates(subscription) {
   const priceId = subscription?.items?.data?.[0]?.price?.id || "";
   const plan = getPlanByPriceId(priceId);
   const active = isSubscriptionActive(subscription.status);
 
-  return updateCustomerByStripeCustomerId(subscription.customer, {
+  return {
     plan: active ? plan : "free",
     subscription_status: subscription.status || "unknown",
     subscription_current_period_end: getSubscriptionPeriodEnd(subscription),
+    subscription_cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
+    stripe_customer_id: subscription.customer || "",
     stripe_subscription_id: subscription.id || "",
     stripe_price_id: priceId
-  });
+  };
+}
+
+async function updateCustomerSubscription(subscription) {
+  const updates = buildSubscriptionUpdates(subscription);
+  const updatedByStripeId = await updateCustomerByStripeCustomerId(subscription.customer, updates);
+
+  if (updatedByStripeId) {
+    return updatedByStripeId;
+  }
+
+  return updateCustomerByCustomerNumber(subscription.metadata?.customer_number, updates);
+}
+
+async function syncCustomerSubscriptionFromStripe(customer) {
+  if (!stripe || !customer?.stripe_customer_id) return customer;
+
+  let subscription = null;
+
+  if (customer.stripe_subscription_id) {
+    subscription = await stripe.subscriptions
+      .retrieve(customer.stripe_subscription_id)
+      .catch(() => null);
+  }
+
+  if (!subscription || subscription.customer !== customer.stripe_customer_id) {
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customer.stripe_customer_id,
+      status: "all",
+      limit: 10
+    });
+
+    subscription =
+      subscriptions.data.find((entry) => isSubscriptionActive(entry.status)) ||
+      subscriptions.data[0] ||
+      null;
+  }
+
+  if (!subscription) return customer;
+
+  return updateCustomerSubscription(subscription);
 }
 
 async function handleStripeEvent(event) {
+  if (event.type === "customer.deleted") {
+    const customer = event.data.object;
+    await updateCustomerByStripeCustomerId(customer.id, {
+      plan: "free",
+      subscription_status: "customer_deleted",
+      subscription_current_period_end: null,
+      subscription_cancel_at_period_end: false,
+      stripe_customer_id: "",
+      stripe_subscription_id: "",
+      stripe_price_id: ""
+    });
+    return;
+  }
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     if (session.mode !== "subscription") return;
@@ -681,7 +769,9 @@ async function handleStripeEvent(event) {
   if (
     event.type === "customer.subscription.created" ||
     event.type === "customer.subscription.updated" ||
-    event.type === "customer.subscription.deleted"
+    event.type === "customer.subscription.deleted" ||
+    event.type === "customer.subscription.paused" ||
+    event.type === "customer.subscription.resumed"
   ) {
     await updateCustomerSubscription(event.data.object);
   }
@@ -693,7 +783,7 @@ async function handleStripeEvent(event) {
     });
   }
 
-  if (event.type === "invoice.paid") {
+  if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
     const invoice = event.data.object;
     if (invoice.subscription) {
       const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
@@ -1438,6 +1528,8 @@ app.get("/api/customer/billing/usage", customerAuth, async (req, res) => {
     plan_name: planConfig?.name || "Kein aktives Abo",
     subscription_status: subscriptionStatus,
     subscription_active: Boolean(planConfig && isSubscriptionActive(subscriptionStatus)),
+    subscription_current_period_end: customer.subscription_current_period_end || null,
+    subscription_cancel_at_period_end: Boolean(customer.subscription_cancel_at_period_end),
     catalog_count: catalogCount,
     catalog_limit: planConfig?.catalogLimit || 0,
     catalogs_remaining: planConfig
@@ -1447,6 +1539,31 @@ app.get("/api/customer/billing/usage", customerAuth, async (req, res) => {
     can_create_catalog:
       Boolean(planConfig && isSubscriptionActive(subscriptionStatus)) &&
       catalogCount < planConfig.catalogLimit
+  });
+});
+
+app.post("/api/customer/billing/sync", customerAuth, async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ error: "Stripe ist nicht konfiguriert" });
+  }
+
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const customer = customers.find(
+    (entry) => entry.customer_number === req.customer.customer_number
+  );
+
+  if (!customer) {
+    return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  if (!customer.stripe_customer_id) {
+    return res.status(400).json({ error: "Noch kein Stripe-Kunde vorhanden" });
+  }
+
+  const syncedCustomer = await syncCustomerSubscriptionFromStripe(customer);
+  res.json({
+    success: true,
+    customer: buildCustomerProfile(syncedCustomer || customer)
   });
 });
 
@@ -1469,6 +1586,24 @@ app.post("/api/customer/billing/checkout", customerAuth, async (req, res) => {
 
   if (index === -1) {
     return res.status(404).json({ error: "Kunde nicht gefunden" });
+  }
+
+  if (
+    customers[index].stripe_subscription_id &&
+    isSubscriptionActive(customers[index].subscription_status)
+  ) {
+    const portalSession = customers[index].stripe_customer_id
+      ? await stripe.billingPortal.sessions.create({
+          customer: customers[index].stripe_customer_id,
+          return_url: STRIPE_PORTAL_RETURN_URL
+        })
+      : null;
+
+    return res.status(409).json({
+      error: "Es besteht bereits ein aktives Abo. Bitte verwalte Aenderungen im Kundenportal.",
+      code: "ACTIVE_SUBSCRIPTION_EXISTS",
+      portal_url: portalSession?.url || ""
+    });
   }
 
   let stripeCustomerId = customers[index].stripe_customer_id || "";
@@ -1495,14 +1630,24 @@ app.post("/api/customer/billing/checkout", customerAuth, async (req, res) => {
     mode: "subscription",
     customer: stripeCustomerId,
     client_reference_id: customers[index].customer_number,
+    locale: "de",
+    billing_address_collection: "auto",
+    allow_promotion_codes: STRIPE_ALLOW_PROMOTION_CODES,
+    automatic_tax: {
+      enabled: STRIPE_AUTOMATIC_TAX
+    },
+    customer_update: {
+      address: "auto",
+      name: "auto"
+    },
     line_items: [
       {
         price: plan.priceId,
         quantity: 1
       }
     ],
-    success_url: `${FRONTEND_BASE_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${FRONTEND_BASE_URL}/billing/cancelled`,
+    success_url: STRIPE_CHECKOUT_SUCCESS_URL,
+    cancel_url: STRIPE_CHECKOUT_CANCEL_URL,
     metadata: {
       customer_number: customers[index].customer_number,
       plan: requestedPlan
@@ -1541,7 +1686,7 @@ app.post("/api/customer/billing/portal", customerAuth, async (req, res) => {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customer.stripe_customer_id,
-    return_url: `${FRONTEND_BASE_URL}/dashboard`
+    return_url: STRIPE_PORTAL_RETURN_URL
   });
 
   res.json({ portal_url: session.url });
@@ -2127,6 +2272,7 @@ app.get("/api/customers", adminAuth, async (req, res) => {
       plan: c.plan || "free",
       subscription_status: c.subscription_status || "none",
       subscription_current_period_end: c.subscription_current_period_end || null,
+      subscription_cancel_at_period_end: Boolean(c.subscription_cancel_at_period_end),
       stripe_customer_id: c.stripe_customer_id || "",
       is_active: c.is_active !== false,
       created_at: c.created_at || null,
@@ -2187,6 +2333,7 @@ app.post("/api/customers", adminAuth, async (req, res) => {
     plan: "free",
     subscription_status: "none",
     subscription_current_period_end: null,
+    subscription_cancel_at_period_end: false,
     stripe_customer_id: "",
     stripe_subscription_id: "",
     stripe_price_id: "",
@@ -2258,6 +2405,7 @@ app.put("/api/customers/:id", adminAuth, async (req, res) => {
     subscription_status: customers[index].subscription_status || "none",
     subscription_current_period_end:
       customers[index].subscription_current_period_end || null,
+    subscription_cancel_at_period_end: Boolean(customers[index].subscription_cancel_at_period_end),
     is_active: customers[index].is_active,
     created_at: customers[index].created_at,
     updated_at: customers[index].updated_at
