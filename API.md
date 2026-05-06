@@ -92,6 +92,7 @@ GET /api/requests
 
 ```http
 POST /api/customer-login
+POST /api/customer/register
 GET /api/customer/me
 PUT /api/customer/me
 PUT /api/customer/password
@@ -144,6 +145,46 @@ Alternativ kann das Frontend ein allgemeines Feld `login` oder `identifier` send
   "password": "..."
 }
 ```
+
+Kundenregistrierung:
+
+```http
+POST /api/customer/register
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "company_name": "Firma GmbH",
+  "first_name": "Max",
+  "last_name": "Mustermann",
+  "email": "max@example.com",
+  "password": "mindestens-8-zeichen",
+  "plan": "starter"
+}
+```
+
+`plan` ist optional und darf `starter`, `business` oder `pro` enthalten. Die Registrierung erzeugt eine freie Kundennummer automatisch, legt den Kunden mit `plan: free` und `subscription_status: none` an und gibt direkt einen Customer-JWT zurueck.
+
+Antwort:
+
+```json
+{
+  "success": true,
+  "token": "<CUSTOMER_JWT>",
+  "customer": {
+    "customer_number": "1234",
+    "company_name": "Firma GmbH",
+    "email": "max@example.com",
+    "plan": "free"
+  },
+  "requested_plan": "starter"
+}
+```
+
+Bei doppelter E-Mail antwortet die API mit `409` und `EMAIL_ALREADY_EXISTS`.
 
 ## SmartViewer-Einstellungen
 
