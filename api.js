@@ -1845,10 +1845,11 @@ app.post("/api/customer/logo", customerAuth, logoUpload.single("logo"), async (r
 });
 
 app.use((error, req, res, next) => {
+  const isProductImageUpload =
+    req.path.includes("/hotspots/") && req.path.includes("/images");
+
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    const uploadError = req.path.includes("/hotspots/") && req.path.includes("/images")
-      ? "Produktbild größer als 3 MB"
-      : "Datei größer als 20 MB";
+    const uploadError = isProductImageUpload ? "Produktbild größer als 3 MB" : "Datei größer als 20 MB";
     return res.status(413).json({ error: uploadError });
   }
 
@@ -1856,7 +1857,10 @@ app.use((error, req, res, next) => {
     error instanceof multer.MulterError &&
     (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE")
   ) {
-    return res.status(400).json({ error: "Maximal 3 Produktbilder pro Hotspot erlaubt" });
+    const uploadError = isProductImageUpload
+      ? "Maximal 3 Produktbilder pro Hotspot erlaubt"
+      : "PDF-Datei muss im Formularfeld file hochgeladen werden";
+    return res.status(400).json({ error: uploadError });
   }
 
   if (
@@ -2556,10 +2560,11 @@ app.get("/api/requests", adminAuth, async (req, res) => {
 });
 
 app.use((error, req, res, next) => {
+  const isProductImageUpload =
+    req.path.includes("/hotspots/") && req.path.includes("/images");
+
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    const uploadError = req.path.includes("/hotspots/") && req.path.includes("/images")
-      ? "Produktbild größer als 3 MB"
-      : "Datei größer als 20 MB";
+    const uploadError = isProductImageUpload ? "Produktbild größer als 3 MB" : "Datei größer als 20 MB";
     return res.status(413).json({ error: uploadError });
   }
 
@@ -2567,7 +2572,10 @@ app.use((error, req, res, next) => {
     error instanceof multer.MulterError &&
     (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE")
   ) {
-    return res.status(400).json({ error: "Maximal 3 Produktbilder pro Hotspot erlaubt" });
+    const uploadError = isProductImageUpload
+      ? "Maximal 3 Produktbilder pro Hotspot erlaubt"
+      : "PDF-Datei muss im Formularfeld file hochgeladen werden";
+    return res.status(400).json({ error: uploadError });
   }
 
   if (

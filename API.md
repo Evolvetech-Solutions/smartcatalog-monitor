@@ -303,6 +303,16 @@ Antwort:
 
 Neue Kataloge koennen nur erstellt werden, wenn `subscription_active` true ist und `catalog_count` kleiner als `catalog_limit` ist. Bei ueberschrittenem Limit antwortet die API mit `CATALOG_LIMIT_REACHED`, bei fehlendem/ungueltigem Abo mit `SUBSCRIPTION_REQUIRED`.
 
+PDF-Katalog hochladen:
+
+```http
+POST /api/customer/upload
+Authorization: Bearer <CUSTOMER_JWT>
+Content-Type: multipart/form-data
+```
+
+Der Upload muss die PDF-Datei im Formularfeld `file` senden. Produktbilder nutzen dagegen eigene Hotspot-Endpunkte mit dem Feld `images`.
+
 Stripe-Status manuell synchronisieren:
 
 ```http
