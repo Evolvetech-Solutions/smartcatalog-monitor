@@ -283,6 +283,11 @@
       font-size: 13px;
     }
 
+    #mobileTools button.active {
+      background: var(--brand);
+      color: #fff;
+    }
+
     #mobileZoomTools {
       display: none;
       align-items: center;
@@ -664,6 +669,31 @@
         border-radius: 10px;
         overflow: hidden;
         box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
+        touch-action: pan-x pan-y;
+      }
+
+      #pageCanvas.mobile-placing {
+        cursor: crosshair;
+        outline: 3px solid rgba(37, 99, 235, 0.75);
+        outline-offset: 4px;
+        touch-action: none;
+      }
+
+      #pageCanvas.mobile-placing::after {
+        content: "Tippen, um Hotspot zu platzieren";
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+        z-index: 4;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.82);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 800;
+        text-align: center;
+        pointer-events: none;
       }
 
       .hotspot {
@@ -965,6 +995,7 @@
       interaction: null,
       zoom: 1,
       mobileTab: "content",
+      mobilePlacing: false,
       dirty: false
     };
 
@@ -1144,8 +1175,18 @@
       el.mobileStyleTabBtn?.classList.toggle("active", state.mobileTab === "style");
     }
 
+    function setMobilePlacing(active = true) {
+      state.mobilePlacing = Boolean(active);
+      el.pageCanvas?.classList.toggle("mobile-placing", state.mobilePlacing);
+      el.mobileAddBtn?.classList.toggle("active", state.mobilePlacing);
+    }
+
     function setEditorZoom(value) {
-      const nextZoom = Math.max(1, Math.min(2.5, Number(value) || 1));
+      const maxZoom = isMobileEditor() ? 4 : 2.5;
+      const nextZoom = Math.max(1, Math.min(maxZoom, Number(value) || 1));
+      const previousZoom = state.zoom;
+      const previousLeft = el.pageCanvasWrap?.scrollLeft || 0;
+      const previousTop = el.pageCanvasWrap?.scrollTop || 0;
       state.zoom = nextZoom;
 
       if (isMobileEditor()) {
@@ -1159,6 +1200,14 @@
         el.zoomValue.innerText = `${Math.round(nextZoom * 100)}%`;
       }
       el.mobileZoomResetBtn?.classList.toggle("active", Math.abs(nextZoom - 1) < 0.01);
+
+      if (isMobileEditor() && el.pageCanvasWrap && previousZoom > 0 && Math.abs(previousZoom - nextZoom) > 0.01) {
+        requestAnimationFrame(() => {
+          const ratio = nextZoom / previousZoom;
+          el.pageCanvasWrap.scrollLeft = previousLeft * ratio;
+          el.pageCanvasWrap.scrollTop = previousTop * ratio;
+        });
+      }
     }
 
     function zoomBy(delta) {
@@ -1262,6 +1311,7 @@
     function render() {
       setEditorZoom(state.zoom);
       setMobileTab(state.mobileTab);
+      setMobilePlacing(state.mobilePlacing);
       const page = state.pages[state.currentPage - 1];
       el.pageImage.src = page?.image_url || "";
       el.pageImage.alt = `Seite ${state.currentPage}`;
@@ -1757,10 +1807,11 @@
     }
 
     function createMobileHotspot() {
-      createHotspot(defaultRectAt({ x: 0.5, y: 0.5 }));
-      setMobileTab("content");
       openEditorPanel(false);
-      setStatus("Hotspot mittig erstellt. Ziehen zum Verschieben, Details zum Bearbeiten öffnen.");
+      setMobilePlacing(!state.mobilePlacing);
+      setStatus(state.mobilePlacing
+        ? "Platzierungsmodus: Tippe auf die gewünschte Stelle im Katalog."
+        : "Platzierungsmodus beendet.");
     }
 
     function escapeHtml(value) {
@@ -1779,6 +1830,7 @@
     el.pageCanvas.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       if (event.target !== el.pageCanvas) return;
+      if (isMobileEditor() && !state.mobilePlacing) return;
       state.drawing = true;
       state.drawStart = getRelativePoint(event);
       state.draft = { ...state.drawStart, width: 0, height: 0 };
@@ -1805,6 +1857,13 @@
       const point = state.drawStart;
       state.drawing = false;
       state.draft = null;
+      if (isMobileEditor() && state.mobilePlacing) {
+        createHotspot(defaultRectAt(point));
+        setMobileTab("content");
+        setMobilePlacing(false);
+        setStatus("Hotspot platziert. Ziehen zum Verschieben oder Details öffnen.");
+        return;
+      }
       createHotspot(
         rect.width < 0.015 && rect.height < 0.015 && event.pointerType === "touch"
           ? defaultRectAt(point)
@@ -1852,7 +1911,7 @@
     el.mobileSaveBtn.addEventListener("click", () => {
       save().catch((error) => setStatus(error.message));
     });
-    el.mobileSheetHandle.addEventListener("click", () => openEditorPanel(false));
+    el.mobileSheetHandle.addEventListener("click", () => openEditorPanel(!el.editorPanel.classList.contains("open")));
     el.mobileCollapseBtn.addEventListener("click", () => openEditorPanel(false));
     el.mobilePanelSaveBtn.addEventListener("click", () => {
       save()
@@ -1863,9 +1922,9 @@
     });
     el.mobileContentTabBtn.addEventListener("click", () => setMobileTab("content"));
     el.mobileStyleTabBtn.addEventListener("click", () => setMobileTab("style"));
-    el.mobileZoomOutBtn.addEventListener("click", () => zoomBy(-0.25));
+    el.mobileZoomOutBtn.addEventListener("click", () => zoomBy(-0.2));
     el.mobileZoomResetBtn.addEventListener("click", () => setEditorZoom(1));
-    el.mobileZoomInBtn.addEventListener("click", () => zoomBy(0.25));
+    el.mobileZoomInBtn.addEventListener("click", () => zoomBy(0.2));
     window.addEventListener("resize", () => setEditorZoom(isMobileEditor() ? state.zoom : 1));
     [
       el.typeInput,
