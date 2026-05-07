@@ -474,18 +474,29 @@
     }
 
     @media (max-width: 980px) {
+      html,
+      body {
+        background: #0f172a;
+      }
+
       body {
         overflow: hidden;
       }
 
       header {
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 8px;
-        padding: 8px 12px;
+        gap: 10px;
+        min-height: 56px;
+        padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+        background: rgba(15, 23, 42, 0.98);
+        border-bottom: 0;
+        box-shadow: none;
       }
 
       h1 {
-        font-size: 20px;
+        color: #fff;
+        font-size: 16px;
+        letter-spacing: 0;
       }
 
       #subtitle {
@@ -498,14 +509,22 @@
       }
 
       #topActions button {
-        min-height: 30px;
-        padding: 0 8px;
+        min-height: 34px;
+        border-color: rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 0 10px;
         font-size: 12px;
+        box-shadow: none;
+      }
+
+      #topActions .secondary {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
       }
 
       button {
-        min-height: 32px;
-        border-radius: 9px;
+        min-height: 40px;
+        border-radius: 999px;
         font-size: 13px;
         padding: 0 10px;
       }
@@ -513,21 +532,33 @@
       main {
         grid-template-columns: 1fr;
         grid-template-rows: 1fr;
-        gap: 6px;
-        padding: 6px;
+        gap: 0;
+        padding: 0;
         overflow: hidden;
       }
 
       #workspace {
-        grid-template-rows: auto auto auto 1fr;
-        gap: 6px;
+        position: relative;
+        display: block;
+        min-height: 0;
+        overflow: hidden;
       }
 
       #pageToolbar {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        z-index: 20;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
-        gap: 6px;
+        grid-template-columns: minmax(0, 1fr) 42px 42px;
+        gap: 7px;
         padding: 7px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.26);
+        backdrop-filter: blur(14px);
       }
 
       #pageToolbar label {
@@ -546,16 +577,54 @@
         padding: 7px 9px;
       }
 
+      #pageToolbar select {
+        min-height: 38px;
+        border: 0;
+        background: transparent;
+        font-weight: 800;
+      }
+
+      #pageToolbar button {
+        min-width: 42px;
+        min-height: 38px;
+        padding: 0;
+      }
+
       #mobileTools {
+        position: absolute;
+        right: 10px;
+        bottom: calc(14px + env(safe-area-inset-bottom));
+        left: 10px;
+        z-index: 21;
         display: grid;
-        grid-template-columns: 1.1fr 1.1fr 0.7fr 1fr 0.7fr 1.2fr;
-        padding: 7px;
+        grid-template-columns: 1.2fr 1.05fr 42px 64px 42px 1.15fr;
+        gap: 7px;
+        padding: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.93);
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.28);
+        backdrop-filter: blur(16px);
+      }
+
+      #mobileTools button {
+        min-height: 38px;
+        padding: 0 8px;
+        box-shadow: none;
       }
 
       #mobileStatusToast.show {
+        position: absolute;
+        right: 18px;
+        bottom: calc(78px + env(safe-area-inset-bottom));
+        left: 18px;
+        z-index: 20;
         display: block;
-        min-height: 18px;
-        margin: -2px 4px 0;
+        min-height: 20px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.76);
+        color: #fff;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -571,12 +640,17 @@
       }
 
       #pageCanvasWrap {
-        height: calc(100vh - 156px);
-        height: calc(100dvh - 156px);
+        height: calc(100vh - 56px);
+        height: calc(100dvh - 56px);
         max-height: none;
-        padding: 10px;
+        padding: 76px 10px calc(90px + env(safe-area-inset-bottom));
+        border: 0;
+        border-radius: 0;
         align-items: flex-start;
         justify-content: center;
+        background:
+          radial-gradient(circle at top, rgba(59, 130, 246, 0.28), transparent 34%),
+          linear-gradient(180deg, #172033 0%, #0f172a 100%);
         -webkit-overflow-scrolling: touch;
       }
 
@@ -587,6 +661,9 @@
       #pageCanvas {
         width: var(--mobile-canvas-width, 100%);
         max-width: none;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
       }
 
       .hotspot {
@@ -629,17 +706,17 @@
         bottom: 0;
         left: 0;
         z-index: 30;
-        max-height: min(68vh, calc(100vh - 132px));
-        max-height: min(68dvh, calc(100dvh - 132px));
+        max-height: min(78vh, calc(100vh - 90px));
+        max-height: min(78dvh, calc(100dvh - 90px));
         display: block;
         overflow: auto;
-        padding: 8px 8px calc(112px + env(safe-area-inset-bottom));
-        border-top: 1px solid var(--line);
-        border-radius: 18px 18px 0 0;
-        background: var(--bg);
-        box-shadow: 0 -18px 45px rgba(15, 23, 42, 0.22);
-        transform: translateY(calc(100% - 32px));
-        transition: transform 180ms ease;
+        padding: 10px 10px calc(108px + env(safe-area-inset-bottom));
+        border-top: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 26px 26px 0 0;
+        background: rgba(241, 245, 249, 0.97);
+        box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.34);
+        transform: translateY(calc(100% - 28px));
+        transition: transform 220ms ease;
       }
 
       aside.open {
@@ -648,7 +725,8 @@
 
       aside:not(.open) {
         overflow: hidden;
-        padding-bottom: 8px;
+        padding-bottom: 6px;
+        background: rgba(241, 245, 249, 0.86);
       }
 
       aside:not(.open) #mobileSheetActions,
@@ -658,7 +736,9 @@
 
       aside .panel {
         margin-bottom: 8px;
-        padding: 12px;
+        padding: 14px;
+        border-radius: 18px;
+        box-shadow: none;
       }
 
       aside .panel:first-of-type {
@@ -666,7 +746,7 @@
       }
 
       .panel h2 {
-        font-size: 17px;
+        font-size: 18px;
       }
 
       .field {
@@ -689,15 +769,18 @@
 
       #mobileSheetActions {
         position: sticky;
-        top: -8px;
+        top: -10px;
         z-index: 2;
         display: flex;
-        padding: 6px 0 8px;
-        background: var(--bg);
+        padding: 8px 0 10px;
+        background: rgba(241, 245, 249, 0.97);
       }
 
       #mobileSheetTabs {
         display: flex;
+        padding: 4px;
+        border-radius: 999px;
+        background: #e2e8f0;
       }
 
       aside[data-mobile-tab="content"] [data-mobile-section="style"],
@@ -708,6 +791,10 @@
       aside .panel:nth-of-type(2),
       aside .panel:nth-of-type(3) {
         display: none;
+      }
+
+      #mobileSheetTabs button {
+        min-height: 36px;
       }
 
       .controlGrid {
