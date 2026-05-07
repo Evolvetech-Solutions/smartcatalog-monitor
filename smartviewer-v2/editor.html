@@ -259,8 +259,12 @@
       width: 48px;
       height: 5px;
       margin: 0 auto 10px;
+      min-height: 5px;
+      padding: 0;
+      border: 0;
       border-radius: 999px;
       background: #cbd5e1;
+      box-shadow: none;
     }
 
     #mobileTools {
@@ -306,6 +310,16 @@
       font-size: 13px;
       font-weight: 800;
       text-align: center;
+    }
+
+    #mobileSheetActions {
+      display: none;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    #mobileSheetActions button {
+      flex: 1;
     }
 
     .panel h2 {
@@ -578,8 +592,8 @@
         bottom: 0;
         left: 0;
         z-index: 30;
-        max-height: calc(100vh - 116px);
-        max-height: calc(100dvh - 116px);
+        max-height: min(68vh, calc(100vh - 132px));
+        max-height: min(68dvh, calc(100dvh - 132px));
         display: block;
         overflow: auto;
         padding: 8px 8px calc(112px + env(safe-area-inset-bottom));
@@ -624,6 +638,15 @@
 
       .mobileOnly {
         display: block;
+      }
+
+      #mobileSheetActions {
+        position: sticky;
+        top: -8px;
+        z-index: 2;
+        display: flex;
+        padding: 6px 0 8px;
+        background: var(--bg);
       }
 
       .controlGrid {
@@ -680,7 +703,11 @@
     </section>
 
     <aside id="editorPanel">
-      <div id="mobileSheetHandle" class="mobileOnly"></div>
+      <button type="button" id="mobileSheetHandle" class="mobileOnly" aria-label="Details schließen"></button>
+      <div id="mobileSheetActions" class="mobileOnly">
+        <button type="button" class="secondary" id="mobileCollapseBtn">Schließen</button>
+        <button type="button" id="mobilePanelSaveBtn">Speichern</button>
+      </div>
       <section class="panel">
         <h2>Ausgewählter Hotspot</h2>
         <div class="field">
@@ -797,6 +824,9 @@
       pageCanvas: document.getElementById("pageCanvas"),
       pageImage: document.getElementById("pageImage"),
       editorPanel: document.getElementById("editorPanel"),
+      mobileSheetHandle: document.getElementById("mobileSheetHandle"),
+      mobileCollapseBtn: document.getElementById("mobileCollapseBtn"),
+      mobilePanelSaveBtn: document.getElementById("mobilePanelSaveBtn"),
       status: document.getElementById("status"),
       hotspotList: document.getElementById("hotspotList"),
       saveBtn: document.getElementById("saveBtn"),
@@ -943,6 +973,9 @@
     }
 
     function openEditorPanel(open = true) {
+      if (!open && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       el.editorPanel?.classList.toggle("open", open);
     }
 
@@ -1650,6 +1683,15 @@
     });
     el.mobileSaveBtn.addEventListener("click", () => {
       save().catch((error) => setStatus(error.message));
+    });
+    el.mobileSheetHandle.addEventListener("click", () => openEditorPanel(false));
+    el.mobileCollapseBtn.addEventListener("click", () => openEditorPanel(false));
+    el.mobilePanelSaveBtn.addEventListener("click", () => {
+      save()
+        .then(() => {
+          if (isMobileEditor()) openEditorPanel(false);
+        })
+        .catch((error) => setStatus(error.message));
     });
     el.mobileZoomOutBtn.addEventListener("click", () => zoomBy(-0.25));
     el.mobileZoomResetBtn.addEventListener("click", () => setEditorZoom(1));
