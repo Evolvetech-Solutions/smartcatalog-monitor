@@ -455,7 +455,7 @@
       }
 
       header {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
         padding: 8px 12px;
       }
@@ -465,13 +465,18 @@
       }
 
       #subtitle {
-        margin-top: 2px;
-        font-size: 13px;
+        display: none;
       }
 
       #topActions {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        gap: 6px;
+      }
+
+      #topActions button {
+        min-height: 30px;
+        padding: 0 8px;
+        font-size: 12px;
       }
 
       button {
@@ -490,7 +495,7 @@
       }
 
       #workspace {
-        grid-template-rows: auto auto auto 1fr;
+        grid-template-rows: auto auto 1fr;
         gap: 6px;
       }
 
@@ -520,12 +525,12 @@
 
       #mobileTools {
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: 1.1fr 1.1fr 0.7fr 1fr 0.7fr 1.2fr;
         padding: 7px;
       }
 
       #mobileZoomTools {
-        display: flex;
+        display: contents;
         padding: 7px;
       }
 
@@ -534,8 +539,8 @@
       }
 
       #pageCanvasWrap {
-        height: calc(100vh - 212px);
-        height: calc(100dvh - 212px);
+        height: calc(100vh - 156px);
+        height: calc(100dvh - 156px);
         max-height: none;
         padding: 10px;
         align-items: flex-start;
@@ -601,12 +606,22 @@
         border-radius: 18px 18px 0 0;
         background: var(--bg);
         box-shadow: 0 -18px 45px rgba(15, 23, 42, 0.22);
-        transform: translateY(calc(100% - 54px));
+        transform: translateY(calc(100% - 32px));
         transition: transform 180ms ease;
       }
 
       aside.open {
         transform: translateY(0);
+      }
+
+      aside:not(.open) {
+        overflow: hidden;
+        padding-bottom: 8px;
+      }
+
+      aside:not(.open) #mobileSheetActions,
+      aside:not(.open) .panel {
+        display: none;
       }
 
       aside .panel {
@@ -684,15 +699,12 @@
       <div id="mobileTools">
         <button type="button" class="secondary" id="mobileAddBtn">Hotspot</button>
         <button type="button" class="secondary" id="mobileDetailsBtn">Details</button>
-        <button type="button" id="mobileSaveBtn">Speichern</button>
-      </div>
-
-      <div id="mobileZoomTools">
         <button type="button" class="secondary" id="mobileZoomOutBtn">-</button>
         <button type="button" class="secondary active" id="mobileZoomResetBtn">
           <span id="zoomValue">100%</span>
         </button>
         <button type="button" class="secondary" id="mobileZoomInBtn">+</button>
+        <button type="button" id="mobileSaveBtn">Speichern</button>
       </div>
 
       <div id="pageCanvasWrap">
