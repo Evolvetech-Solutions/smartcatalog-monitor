@@ -322,6 +322,30 @@
       flex: 1;
     }
 
+    #mobileSheetTabs {
+      display: none;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    #mobileSheetTabs button {
+      flex: 1;
+      background: #eef2f7;
+      color: var(--ink);
+    }
+
+    #mobileSheetTabs button.active {
+      background: #111827;
+      color: #fff;
+    }
+
+    #mobileStatusToast {
+      display: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
     .panel h2 {
       margin: 0 0 12px;
       font-size: 15px;
@@ -495,7 +519,7 @@
       }
 
       #workspace {
-        grid-template-rows: auto auto 1fr;
+        grid-template-rows: auto auto auto 1fr;
         gap: 6px;
       }
 
@@ -506,9 +530,8 @@
         padding: 7px;
       }
 
-      #pageToolbar label,
-      #pageToolbar .hint {
-        grid-column: 1 / -1;
+      #pageToolbar label {
+        display: none;
       }
 
       #pageToolbar .hint {
@@ -527,6 +550,15 @@
         display: grid;
         grid-template-columns: 1.1fr 1.1fr 0.7fr 1fr 0.7fr 1.2fr;
         padding: 7px;
+      }
+
+      #mobileStatusToast.show {
+        display: block;
+        min-height: 18px;
+        margin: -2px 4px 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       #mobileZoomTools {
@@ -664,6 +696,20 @@
         background: var(--bg);
       }
 
+      #mobileSheetTabs {
+        display: flex;
+      }
+
+      aside[data-mobile-tab="content"] [data-mobile-section="style"],
+      aside[data-mobile-tab="style"] [data-mobile-section="content"] {
+        display: none;
+      }
+
+      aside .panel:nth-of-type(2),
+      aside .panel:nth-of-type(3) {
+        display: none;
+      }
+
       .controlGrid {
         grid-template-columns: 1fr;
       }
@@ -706,6 +752,7 @@
         <button type="button" class="secondary" id="mobileZoomInBtn">+</button>
         <button type="button" id="mobileSaveBtn">Speichern</button>
       </div>
+      <div id="mobileStatusToast" aria-live="polite"></div>
 
       <div id="pageCanvasWrap">
         <div id="pageCanvas">
@@ -720,9 +767,13 @@
         <button type="button" class="secondary" id="mobileCollapseBtn">Schließen</button>
         <button type="button" id="mobilePanelSaveBtn">Speichern</button>
       </div>
+      <div id="mobileSheetTabs" class="mobileOnly">
+        <button type="button" class="active" id="mobileContentTabBtn">Inhalt</button>
+        <button type="button" id="mobileStyleTabBtn">Stil</button>
+      </div>
       <section class="panel">
         <h2>Ausgewählter Hotspot</h2>
-        <div class="field">
+        <div class="field" data-mobile-section="content">
           <label for="typeInput">Typ</label>
           <select id="typeInput">
             <option value="link">Link</option>
@@ -732,37 +783,37 @@
             <option value="note">Notiz</option>
           </select>
         </div>
-        <div class="field" data-field="title">
+        <div class="field" data-field="title" data-mobile-section="content">
           <label for="titleInput">Titel</label>
           <input id="titleInput" placeholder="z. B. Angebot ansehen" />
         </div>
-        <div class="field" data-field="url">
+        <div class="field" data-field="url" data-mobile-section="content">
           <label id="urlLabel" for="urlInput">URL</label>
           <input id="urlInput" placeholder="https://..." />
         </div>
-        <div class="field" data-field="targetPage">
+        <div class="field" data-field="targetPage" data-mobile-section="content">
           <label for="targetPageInput">Zielseite</label>
           <input id="targetPageInput" type="number" min="1" placeholder="Nur bei Seitensprung" />
         </div>
-        <div class="field" data-field="productImageUrl">
+        <div class="field" data-field="productImageUrl" data-mobile-section="content">
           <label for="imageUrlInput">Produktbild URL</label>
           <input id="imageUrlInput" placeholder="https://.../produktbild.jpg" />
         </div>
-        <div class="field" data-field="productImages">
+        <div class="field" data-field="productImages" data-mobile-section="content">
           <label for="imageUploadInput">Produktbilder hochladen</label>
           <input id="imageUploadInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
           <p class="hint">Maximal 3 Bilder pro Produkt, je 3 MB. JPG, PNG, WEBP oder GIF.</p>
           <div id="productImageList" class="imageGrid"></div>
         </div>
-        <div class="field" data-field="price">
+        <div class="field" data-field="price" data-mobile-section="content">
           <label for="priceInput">Preis</label>
           <input id="priceInput" placeholder="z. B. 9,99 EUR" />
         </div>
-        <div class="field" data-field="description">
+        <div class="field" data-field="description" data-mobile-section="content">
           <label for="descriptionInput">Beschreibung</label>
           <textarea id="descriptionInput" placeholder="Kurze Produktbeschreibung"></textarea>
         </div>
-        <div class="field" data-field="appearance">
+        <div class="field" data-field="appearance" data-mobile-section="style">
           <label>Darstellung</label>
           <div class="controlGrid">
             <div>
@@ -784,7 +835,7 @@
             <option value="4">Sehr stark</option>
           </select>
         </div>
-        <div class="row">
+        <div class="row" data-mobile-section="style">
           <button type="button" class="danger" id="deleteBtn">Löschen</button>
           <button type="button" class="secondary" id="clearBtn">Auswahl aufheben</button>
         </div>
@@ -826,6 +877,7 @@
       drawStart: null,
       interaction: null,
       zoom: 1,
+      mobileTab: "content",
       dirty: false
     };
 
@@ -839,6 +891,8 @@
       mobileSheetHandle: document.getElementById("mobileSheetHandle"),
       mobileCollapseBtn: document.getElementById("mobileCollapseBtn"),
       mobilePanelSaveBtn: document.getElementById("mobilePanelSaveBtn"),
+      mobileContentTabBtn: document.getElementById("mobileContentTabBtn"),
+      mobileStyleTabBtn: document.getElementById("mobileStyleTabBtn"),
       status: document.getElementById("status"),
       hotspotList: document.getElementById("hotspotList"),
       saveBtn: document.getElementById("saveBtn"),
@@ -849,6 +903,7 @@
       mobileZoomResetBtn: document.getElementById("mobileZoomResetBtn"),
       mobileZoomInBtn: document.getElementById("mobileZoomInBtn"),
       zoomValue: document.getElementById("zoomValue"),
+      mobileStatusToast: document.getElementById("mobileStatusToast"),
       openViewerBtn: document.getElementById("openViewerBtn"),
       typeInput: document.getElementById("typeInput"),
       titleInput: document.getElementById("titleInput"),
@@ -879,6 +934,10 @@
 
     function setStatus(message) {
       el.status.innerText = message;
+      if (el.mobileStatusToast) {
+        el.mobileStatusToast.innerText = message;
+        el.mobileStatusToast.classList.toggle("show", Boolean(message));
+      }
     }
 
     function canSave() {
@@ -989,6 +1048,13 @@
         document.activeElement.blur();
       }
       el.editorPanel?.classList.toggle("open", open);
+    }
+
+    function setMobileTab(tab = "content") {
+      state.mobileTab = tab === "style" ? "style" : "content";
+      el.editorPanel?.setAttribute("data-mobile-tab", state.mobileTab);
+      el.mobileContentTabBtn?.classList.toggle("active", state.mobileTab === "content");
+      el.mobileStyleTabBtn?.classList.toggle("active", state.mobileTab === "style");
     }
 
     function setEditorZoom(value) {
@@ -1108,6 +1174,7 @@
 
     function render() {
       setEditorZoom(state.zoom);
+      setMobileTab(state.mobileTab);
       const page = state.pages[state.currentPage - 1];
       el.pageImage.src = page?.image_url || "";
       el.pageImage.alt = `Seite ${state.currentPage}`;
@@ -1604,6 +1671,7 @@
 
     function createMobileHotspot() {
       createHotspot(defaultRectAt({ x: 0.5, y: 0.5 }));
+      setMobileTab("content");
       openEditorPanel(false);
       setStatus("Hotspot mittig erstellt. Ziehen zum Verschieben, Details zum Bearbeiten öffnen.");
     }
@@ -1690,6 +1758,7 @@
     });
     el.mobileAddBtn.addEventListener("click", createMobileHotspot);
     el.mobileDetailsBtn.addEventListener("click", () => {
+      setMobileTab("content");
       openEditorPanel(true);
       setStatus(state.selectedId ? "Details bearbeiten." : "Bitte zuerst einen Hotspot auswählen.");
     });
@@ -1705,6 +1774,8 @@
         })
         .catch((error) => setStatus(error.message));
     });
+    el.mobileContentTabBtn.addEventListener("click", () => setMobileTab("content"));
+    el.mobileStyleTabBtn.addEventListener("click", () => setMobileTab("style"));
     el.mobileZoomOutBtn.addEventListener("click", () => zoomBy(-0.25));
     el.mobileZoomResetBtn.addEventListener("click", () => setEditorZoom(1));
     el.mobileZoomInBtn.addEventListener("click", () => zoomBy(0.25));
