@@ -279,6 +279,35 @@
       font-size: 13px;
     }
 
+    #mobileZoomTools {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    #mobileZoomTools button {
+      min-width: 44px;
+      padding: 0 10px;
+    }
+
+    #mobileZoomTools button.active {
+      background: #dbeafe;
+      color: var(--brand-strong);
+    }
+
+    #zoomValue {
+      min-width: 54px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+    }
+
     .panel h2 {
       margin: 0 0 12px;
       font-size: 15px;
@@ -413,8 +442,17 @@
 
       header {
         grid-template-columns: 1fr;
-        gap: 10px;
-        padding: 10px 12px;
+        gap: 8px;
+        padding: 8px 12px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      #subtitle {
+        margin-top: 2px;
+        font-size: 13px;
       }
 
       #topActions {
@@ -422,24 +460,31 @@
         grid-template-columns: 1fr 1fr;
       }
 
+      button {
+        min-height: 32px;
+        border-radius: 9px;
+        font-size: 13px;
+        padding: 0 10px;
+      }
+
       main {
         grid-template-columns: 1fr;
         grid-template-rows: 1fr;
-        gap: 8px;
-        padding: 8px;
+        gap: 6px;
+        padding: 6px;
         overflow: hidden;
       }
 
       #workspace {
-        grid-template-rows: auto auto 1fr;
-        gap: 8px;
+        grid-template-rows: auto auto auto 1fr;
+        gap: 6px;
       }
 
       #pageToolbar {
         display: grid;
-        grid-template-columns: 1fr auto auto;
-        gap: 8px;
-        padding: 8px;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 6px;
+        padding: 7px;
       }
 
       #pageToolbar label,
@@ -447,19 +492,50 @@
         grid-column: 1 / -1;
       }
 
+      #pageToolbar .hint {
+        display: none;
+      }
+
+      input,
+      select,
+      textarea {
+        min-height: 40px;
+        font-size: 16px;
+        padding: 7px 9px;
+      }
+
       #mobileTools {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        padding: 7px;
+      }
+
+      #mobileZoomTools {
         display: flex;
+        padding: 7px;
+      }
+
+      #mobileZoomTools button {
+        min-height: 32px;
       }
 
       #pageCanvasWrap {
-        height: calc(100vh - 236px);
+        height: calc(100vh - 212px);
+        height: calc(100dvh - 212px);
         max-height: none;
-        padding: 14px;
-        align-items: center;
+        padding: 10px;
+        align-items: flex-start;
+        justify-content: center;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #pageCanvasWrap.zoomed {
+        justify-content: flex-start;
       }
 
       #pageCanvas {
-        width: min(100%, 92vh);
+        width: var(--mobile-canvas-width, 100%);
+        max-width: none;
       }
 
       .hotspot {
@@ -502,15 +578,16 @@
         bottom: 0;
         left: 0;
         z-index: 30;
-        max-height: 78vh;
+        max-height: calc(100vh - 116px);
+        max-height: calc(100dvh - 116px);
         display: block;
         overflow: auto;
-        padding: 10px;
+        padding: 8px 8px calc(112px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--line);
         border-radius: 18px 18px 0 0;
         background: var(--bg);
         box-shadow: 0 -18px 45px rgba(15, 23, 42, 0.22);
-        transform: translateY(calc(100% - 82px));
+        transform: translateY(calc(100% - 54px));
         transition: transform 180ms ease;
       }
 
@@ -519,11 +596,30 @@
       }
 
       aside .panel {
-        margin-bottom: 10px;
+        margin-bottom: 8px;
+        padding: 12px;
       }
 
       aside .panel:first-of-type {
-        padding-top: 10px;
+        padding-top: 8px;
+      }
+
+      .panel h2 {
+        font-size: 17px;
+      }
+
+      .field {
+        margin-bottom: 8px;
+      }
+
+      label {
+        font-size: 13px;
+      }
+
+      #status,
+      .hint,
+      .listItem span {
+        font-size: 13px;
       }
 
       .mobileOnly {
@@ -566,6 +662,14 @@
         <button type="button" class="secondary" id="mobileAddBtn">Hotspot</button>
         <button type="button" class="secondary" id="mobileDetailsBtn">Details</button>
         <button type="button" id="mobileSaveBtn">Speichern</button>
+      </div>
+
+      <div id="mobileZoomTools">
+        <button type="button" class="secondary" id="mobileZoomOutBtn">-</button>
+        <button type="button" class="secondary active" id="mobileZoomResetBtn">
+          <span id="zoomValue">100%</span>
+        </button>
+        <button type="button" class="secondary" id="mobileZoomInBtn">+</button>
       </div>
 
       <div id="pageCanvasWrap">
@@ -682,12 +786,14 @@
       drawing: false,
       drawStart: null,
       interaction: null,
+      zoom: 1,
       dirty: false
     };
 
     const el = {
       subtitle: document.getElementById("subtitle"),
       pageSelect: document.getElementById("pageSelect"),
+      pageCanvasWrap: document.getElementById("pageCanvasWrap"),
       pageCanvas: document.getElementById("pageCanvas"),
       pageImage: document.getElementById("pageImage"),
       editorPanel: document.getElementById("editorPanel"),
@@ -697,6 +803,10 @@
       mobileAddBtn: document.getElementById("mobileAddBtn"),
       mobileDetailsBtn: document.getElementById("mobileDetailsBtn"),
       mobileSaveBtn: document.getElementById("mobileSaveBtn"),
+      mobileZoomOutBtn: document.getElementById("mobileZoomOutBtn"),
+      mobileZoomResetBtn: document.getElementById("mobileZoomResetBtn"),
+      mobileZoomInBtn: document.getElementById("mobileZoomInBtn"),
+      zoomValue: document.getElementById("zoomValue"),
       openViewerBtn: document.getElementById("openViewerBtn"),
       typeInput: document.getElementById("typeInput"),
       titleInput: document.getElementById("titleInput"),
@@ -836,6 +946,27 @@
       el.editorPanel?.classList.toggle("open", open);
     }
 
+    function setEditorZoom(value) {
+      const nextZoom = Math.max(1, Math.min(2.5, Number(value) || 1));
+      state.zoom = nextZoom;
+
+      if (isMobileEditor()) {
+        el.pageCanvas.style.setProperty("--mobile-canvas-width", `${Math.round(nextZoom * 100)}%`);
+      } else {
+        el.pageCanvas.style.removeProperty("--mobile-canvas-width");
+      }
+
+      el.pageCanvasWrap?.classList.toggle("zoomed", nextZoom > 1.01);
+      if (el.zoomValue) {
+        el.zoomValue.innerText = `${Math.round(nextZoom * 100)}%`;
+      }
+      el.mobileZoomResetBtn?.classList.toggle("active", Math.abs(nextZoom - 1) < 0.01);
+    }
+
+    function zoomBy(delta) {
+      setEditorZoom(state.zoom + delta);
+    }
+
     function moveRect(rect, dx, dy) {
       return {
         ...rect,
@@ -931,6 +1062,7 @@
     }
 
     function render() {
+      setEditorZoom(state.zoom);
       const page = state.pages[state.currentPage - 1];
       el.pageImage.src = page?.image_url || "";
       el.pageImage.alt = `Seite ${state.currentPage}`;
@@ -985,7 +1117,9 @@
 
       renderList();
       fillForm();
-      openEditorPanel(Boolean(state.selectedId));
+      if (!state.selectedId) {
+        openEditorPanel(false);
+      }
     }
 
     function renderList() {
@@ -1182,7 +1316,9 @@
       state.hotspots.push(hotspot);
       state.selectedId = hotspot.id;
       state.dirty = true;
-      setStatus("Hotspot erstellt. Details rechts bearbeiten.");
+      setStatus(isMobileEditor()
+        ? "Hotspot erstellt. Zum Bearbeiten Details öffnen."
+        : "Hotspot erstellt. Details rechts bearbeiten.");
       render();
     }
 
@@ -1423,7 +1559,8 @@
 
     function createMobileHotspot() {
       createHotspot(defaultRectAt({ x: 0.5, y: 0.5 }));
-      setStatus("Hotspot mittig erstellt. Ziehen zum Verschieben, Ecken zum Anpassen.");
+      openEditorPanel(false);
+      setStatus("Hotspot mittig erstellt. Ziehen zum Verschieben, Details zum Bearbeiten öffnen.");
     }
 
     function escapeHtml(value) {
@@ -1514,6 +1651,10 @@
     el.mobileSaveBtn.addEventListener("click", () => {
       save().catch((error) => setStatus(error.message));
     });
+    el.mobileZoomOutBtn.addEventListener("click", () => zoomBy(-0.25));
+    el.mobileZoomResetBtn.addEventListener("click", () => setEditorZoom(1));
+    el.mobileZoomInBtn.addEventListener("click", () => zoomBy(0.25));
+    window.addEventListener("resize", () => setEditorZoom(isMobileEditor() ? state.zoom : 1));
     [
       el.typeInput,
       el.titleInput,
