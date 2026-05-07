@@ -598,11 +598,11 @@
       #mobileTools {
         position: absolute;
         right: 10px;
-        bottom: calc(14px + env(safe-area-inset-bottom));
+        bottom: calc(92px + env(safe-area-inset-bottom));
         left: 10px;
-        z-index: 21;
+        z-index: 31;
         display: grid;
-        grid-template-columns: 1.2fr 1.05fr 42px 64px 42px 1.15fr;
+        grid-template-columns: 1fr 1fr 0.64fr 0.86fr 0.64fr 1fr;
         gap: 7px;
         padding: 8px;
         border: 1px solid rgba(148, 163, 184, 0.28);
@@ -614,16 +614,19 @@
 
       #mobileTools button {
         min-height: 38px;
-        padding: 0 8px;
+        padding: 0 6px;
         box-shadow: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       #mobileStatusToast.show {
         position: absolute;
         right: 18px;
-        bottom: calc(78px + env(safe-area-inset-bottom));
+        bottom: calc(152px + env(safe-area-inset-bottom));
         left: 18px;
-        z-index: 20;
+        z-index: 31;
         display: block;
         min-height: 20px;
         padding: 6px 10px;
@@ -648,7 +651,7 @@
         height: calc(100vh - 56px);
         height: calc(100dvh - 56px);
         max-height: none;
-        padding: 76px 10px calc(90px + env(safe-area-inset-bottom));
+        padding: 76px 10px calc(168px + env(safe-area-inset-bottom));
         border: 0;
         border-radius: 0;
         align-items: flex-start;
@@ -754,11 +757,14 @@
       }
 
       aside:not(.open) {
+        pointer-events: none;
         overflow: hidden;
-        padding-bottom: 6px;
-        background: rgba(241, 245, 249, 0.86);
+        transform: translateY(100%);
+        padding-bottom: 0;
+        box-shadow: none;
       }
 
+      aside:not(.open) #mobileSheetHandle,
       aside:not(.open) #mobileSheetActions,
       aside:not(.open) .panel {
         display: none;
@@ -1179,6 +1185,9 @@
       state.mobilePlacing = Boolean(active);
       el.pageCanvas?.classList.toggle("mobile-placing", state.mobilePlacing);
       el.mobileAddBtn?.classList.toggle("active", state.mobilePlacing);
+      if (el.mobileAddBtn && isMobileEditor()) {
+        el.mobileAddBtn.innerText = state.mobilePlacing ? "Setzen" : "Hotspot";
+      }
     }
 
     function setEditorZoom(value) {
@@ -1829,8 +1838,21 @@
 
     el.pageCanvas.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
-      if (event.target !== el.pageCanvas) return;
-      if (isMobileEditor() && !state.mobilePlacing) return;
+      const target = event.target;
+      const isCanvasSurface = target === el.pageCanvas || target === el.pageImage || target === el.pageCanvasWrap;
+      if (!isCanvasSurface) return;
+
+      if (isMobileEditor()) {
+        if (!state.mobilePlacing) return;
+        const point = getRelativePoint(event);
+        createHotspot(defaultRectAt(point));
+        setMobileTab("content");
+        setMobilePlacing(false);
+        setStatus("Hotspot platziert. Ziehen zum Verschieben oder Details öffnen.");
+        event.preventDefault();
+        return;
+      }
+
       state.drawing = true;
       state.drawStart = getRelativePoint(event);
       state.draft = { ...state.drawStart, width: 0, height: 0 };
@@ -1857,13 +1879,6 @@
       const point = state.drawStart;
       state.drawing = false;
       state.draft = null;
-      if (isMobileEditor() && state.mobilePlacing) {
-        createHotspot(defaultRectAt(point));
-        setMobileTab("content");
-        setMobilePlacing(false);
-        setStatus("Hotspot platziert. Ziehen zum Verschieben oder Details öffnen.");
-        return;
-      }
       createHotspot(
         rect.width < 0.015 && rect.height < 0.015 && event.pointerType === "touch"
           ? defaultRectAt(point)
