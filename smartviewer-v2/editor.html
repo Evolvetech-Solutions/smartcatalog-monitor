@@ -164,11 +164,52 @@
       border-radius: 6px;
       background: var(--hotspot-fill, rgba(37, 99, 235, 0.12));
       cursor: pointer;
+      touch-action: none;
     }
 
     .hotspot.selected {
       border-color: #f97316;
       background: rgba(249, 115, 22, 0.16);
+    }
+
+    .hotspot.moving {
+      cursor: grabbing;
+      box-shadow: 0 12px 30px rgba(37, 99, 235, 0.24);
+    }
+
+    .resizeHandle {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #fff;
+      border-radius: 999px;
+      background: #f97316;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
+      touch-action: none;
+    }
+
+    .resizeHandle[data-handle="nw"] {
+      top: -10px;
+      left: -10px;
+      cursor: nwse-resize;
+    }
+
+    .resizeHandle[data-handle="ne"] {
+      top: -10px;
+      right: -10px;
+      cursor: nesw-resize;
+    }
+
+    .resizeHandle[data-handle="sw"] {
+      bottom: -10px;
+      left: -10px;
+      cursor: nesw-resize;
+    }
+
+    .resizeHandle[data-handle="se"] {
+      right: -10px;
+      bottom: -10px;
+      cursor: nwse-resize;
     }
 
     .controlGrid {
@@ -208,6 +249,34 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--surface);
+    }
+
+    .mobileOnly {
+      display: none;
+    }
+
+    #mobileSheetHandle {
+      width: 48px;
+      height: 5px;
+      margin: 0 auto 10px;
+      border-radius: 999px;
+      background: #cbd5e1;
+    }
+
+    #mobileTools {
+      display: none;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    #mobileTools button {
+      flex: 1;
+      min-width: 0;
+      padding: 0 8px;
+      font-size: 13px;
     }
 
     .panel h2 {
@@ -339,16 +408,134 @@
 
     @media (max-width: 980px) {
       body {
-        overflow: auto;
+        overflow: hidden;
+      }
+
+      header {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 10px 12px;
+      }
+
+      #topActions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
       }
 
       main {
         grid-template-columns: 1fr;
-        overflow: visible;
+        grid-template-rows: 1fr;
+        gap: 8px;
+        padding: 8px;
+        overflow: hidden;
+      }
+
+      #workspace {
+        grid-template-rows: auto auto 1fr;
+        gap: 8px;
+      }
+
+      #pageToolbar {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      #pageToolbar label,
+      #pageToolbar .hint {
+        grid-column: 1 / -1;
+      }
+
+      #mobileTools {
+        display: flex;
       }
 
       #pageCanvasWrap {
-        max-height: 70vh;
+        height: calc(100vh - 236px);
+        max-height: none;
+        padding: 14px;
+        align-items: center;
+      }
+
+      #pageCanvas {
+        width: min(100%, 92vh);
+      }
+
+      .hotspot {
+        min-width: 34px;
+        min-height: 34px;
+      }
+
+      .hotspot.selected {
+        box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.18);
+      }
+
+      .resizeHandle {
+        width: 30px;
+        height: 30px;
+      }
+
+      .resizeHandle[data-handle="nw"] {
+        top: -16px;
+        left: -16px;
+      }
+
+      .resizeHandle[data-handle="ne"] {
+        top: -16px;
+        right: -16px;
+      }
+
+      .resizeHandle[data-handle="sw"] {
+        bottom: -16px;
+        left: -16px;
+      }
+
+      .resizeHandle[data-handle="se"] {
+        right: -16px;
+        bottom: -16px;
+      }
+
+      aside {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 30;
+        max-height: 78vh;
+        display: block;
+        overflow: auto;
+        padding: 10px;
+        border-top: 1px solid var(--line);
+        border-radius: 18px 18px 0 0;
+        background: var(--bg);
+        box-shadow: 0 -18px 45px rgba(15, 23, 42, 0.22);
+        transform: translateY(calc(100% - 82px));
+        transition: transform 180ms ease;
+      }
+
+      aside.open {
+        transform: translateY(0);
+      }
+
+      aside .panel {
+        margin-bottom: 10px;
+      }
+
+      aside .panel:first-of-type {
+        padding-top: 10px;
+      }
+
+      .mobileOnly {
+        display: block;
+      }
+
+      .controlGrid {
+        grid-template-columns: 1fr;
+      }
+
+      .row button {
+        flex: 1;
       }
     }
   </style>
@@ -375,6 +562,12 @@
         <p class="hint">Zum Erstellen eines Hotspots auf der Seite ziehen.</p>
       </div>
 
+      <div id="mobileTools">
+        <button type="button" class="secondary" id="mobileAddBtn">Hotspot</button>
+        <button type="button" class="secondary" id="mobileDetailsBtn">Details</button>
+        <button type="button" id="mobileSaveBtn">Speichern</button>
+      </div>
+
       <div id="pageCanvasWrap">
         <div id="pageCanvas">
           <img id="pageImage" alt="" />
@@ -382,7 +575,8 @@
       </div>
     </section>
 
-    <aside>
+    <aside id="editorPanel">
+      <div id="mobileSheetHandle" class="mobileOnly"></div>
       <section class="panel">
         <h2>Ausgewählter Hotspot</h2>
         <div class="field">
@@ -487,6 +681,7 @@
       draft: null,
       drawing: false,
       drawStart: null,
+      interaction: null,
       dirty: false
     };
 
@@ -495,9 +690,13 @@
       pageSelect: document.getElementById("pageSelect"),
       pageCanvas: document.getElementById("pageCanvas"),
       pageImage: document.getElementById("pageImage"),
+      editorPanel: document.getElementById("editorPanel"),
       status: document.getElementById("status"),
       hotspotList: document.getElementById("hotspotList"),
       saveBtn: document.getElementById("saveBtn"),
+      mobileAddBtn: document.getElementById("mobileAddBtn"),
+      mobileDetailsBtn: document.getElementById("mobileDetailsBtn"),
+      mobileSaveBtn: document.getElementById("mobileSaveBtn"),
       openViewerBtn: document.getElementById("openViewerBtn"),
       typeInput: document.getElementById("typeInput"),
       titleInput: document.getElementById("titleInput"),
@@ -629,6 +828,68 @@
       return { left, top, width, height };
     }
 
+    function isMobileEditor() {
+      return window.matchMedia("(max-width: 980px)").matches;
+    }
+
+    function openEditorPanel(open = true) {
+      el.editorPanel?.classList.toggle("open", open);
+    }
+
+    function moveRect(rect, dx, dy) {
+      return {
+        ...rect,
+        left: clamp(Math.min(1 - rect.width, Math.max(0, rect.left + dx))),
+        top: clamp(Math.min(1 - rect.height, Math.max(0, rect.top + dy)))
+      };
+    }
+
+    function resizeRect(rect, dx, dy, handle) {
+      const minSize = isMobileEditor() ? 0.035 : 0.015;
+      let left = rect.left;
+      let top = rect.top;
+      let right = rect.left + rect.width;
+      let bottom = rect.top + rect.height;
+
+      if (handle.includes("w")) left = clamp(left + dx);
+      if (handle.includes("e")) right = clamp(right + dx);
+      if (handle.includes("n")) top = clamp(top + dy);
+      if (handle.includes("s")) bottom = clamp(bottom + dy);
+
+      if (right - left < minSize) {
+        if (handle.includes("w")) left = right - minSize;
+        if (handle.includes("e")) right = left + minSize;
+      }
+
+      if (bottom - top < minSize) {
+        if (handle.includes("n")) top = bottom - minSize;
+        if (handle.includes("s")) bottom = top + minSize;
+      }
+
+      left = clamp(left);
+      top = clamp(top);
+      right = clamp(Math.max(right, left + minSize));
+      bottom = clamp(Math.max(bottom, top + minSize));
+
+      return {
+        left,
+        top,
+        width: Math.min(1 - left, right - left),
+        height: Math.min(1 - top, bottom - top)
+      };
+    }
+
+    function defaultRectAt(point) {
+      const width = isMobileEditor() ? 0.34 : 0.24;
+      const height = isMobileEditor() ? 0.12 : 0.1;
+      return {
+        left: clamp(Math.min(1 - width, Math.max(0, point.x - width / 2))),
+        top: clamp(Math.min(1 - height, Math.max(0, point.y - height / 2))),
+        width,
+        height
+      };
+    }
+
     function hexToRgba(hex, opacity) {
       const safeHex = /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#2563eb";
       const value = Number.parseInt(safeHex.slice(1), 16);
@@ -681,6 +942,9 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = `hotspot ${hotspot.id === state.selectedId ? "selected" : ""}`;
+        if (state.interaction?.id === hotspot.id && state.interaction?.mode === "move") {
+          button.classList.add("moving");
+        }
         button.style.left = `${hotspot.position.left * 100}%`;
         button.style.top = `${hotspot.position.top * 100}%`;
         button.style.width = `${hotspot.position.width * 100}%`;
@@ -691,6 +955,21 @@
           event.stopPropagation();
           selectHotspot(hotspot.id);
         });
+        button.addEventListener("pointerdown", (event) => {
+          beginHotspotMove(event, hotspot.id);
+        });
+
+        if (hotspot.id === state.selectedId) {
+          ["nw", "ne", "sw", "se"].forEach((handle) => {
+            const grip = document.createElement("span");
+            grip.className = "resizeHandle";
+            grip.dataset.handle = handle;
+            grip.addEventListener("pointerdown", (event) => {
+              beginHotspotResize(event, hotspot.id, handle);
+            });
+            button.appendChild(grip);
+          });
+        }
         el.pageCanvas.appendChild(button);
       });
 
@@ -706,6 +985,7 @@
 
       renderList();
       fillForm();
+      openEditorPanel(Boolean(state.selectedId));
     }
 
     function renderList() {
@@ -906,6 +1186,71 @@
       render();
     }
 
+    function beginHotspotMove(event, hotspotId) {
+      if (event.button !== 0) return;
+      const hotspot = state.hotspots.find((entry) => entry.id === hotspotId);
+      if (!hotspot) return;
+
+      state.selectedId = hotspotId;
+      state.draft = null;
+      state.drawing = false;
+      state.interaction = {
+        mode: "move",
+        id: hotspotId,
+        startPoint: getRelativePoint(event),
+        startRect: { ...hotspot.position }
+      };
+      el.pageCanvas.setPointerCapture?.(event.pointerId);
+      event.stopPropagation();
+      event.preventDefault();
+      render();
+    }
+
+    function beginHotspotResize(event, hotspotId, handle) {
+      if (event.button !== 0) return;
+      const hotspot = state.hotspots.find((entry) => entry.id === hotspotId);
+      if (!hotspot) return;
+
+      state.selectedId = hotspotId;
+      state.draft = null;
+      state.drawing = false;
+      state.interaction = {
+        mode: "resize",
+        id: hotspotId,
+        handle,
+        startPoint: getRelativePoint(event),
+        startRect: { ...hotspot.position }
+      };
+      el.pageCanvas.setPointerCapture?.(event.pointerId);
+      event.stopPropagation();
+      event.preventDefault();
+      render();
+    }
+
+    function updateInteraction(event) {
+      if (!state.interaction) return;
+      const hotspot = state.hotspots.find((entry) => entry.id === state.interaction.id);
+      if (!hotspot) return;
+
+      const point = getRelativePoint(event);
+      const dx = point.x - state.interaction.startPoint.x;
+      const dy = point.y - state.interaction.startPoint.y;
+
+      hotspot.position = state.interaction.mode === "resize"
+        ? resizeRect(state.interaction.startRect, dx, dy, state.interaction.handle)
+        : moveRect(state.interaction.startRect, dx, dy);
+      state.dirty = true;
+      render();
+    }
+
+    function endInteraction() {
+      if (!state.interaction) return false;
+      state.interaction = null;
+      setStatus("Hotspot angepasst.");
+      render();
+      return true;
+    }
+
     async function load() {
       if (!catalogId) {
         setStatus("catalog Parameter fehlt.");
@@ -1076,6 +1421,11 @@
       setStatus("Hotspot gelöscht.");
     }
 
+    function createMobileHotspot() {
+      createHotspot(defaultRectAt({ x: 0.5, y: 0.5 }));
+      setStatus("Hotspot mittig erstellt. Ziehen zum Verschieben, Ecken zum Anpassen.");
+    }
+
     function escapeHtml(value) {
       return String(value || "")
         .replace(/&/g, "&amp;")
@@ -1091,6 +1441,7 @@
 
     el.pageCanvas.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
+      if (event.target !== el.pageCanvas) return;
       state.drawing = true;
       state.drawStart = getRelativePoint(event);
       state.draft = { ...state.drawStart, width: 0, height: 0 };
@@ -1100,17 +1451,35 @@
     });
 
     el.pageCanvas.addEventListener("pointermove", (event) => {
+      if (state.interaction) {
+        updateInteraction(event);
+        return;
+      }
+
       if (!state.drawing || !state.drawStart) return;
       state.draft = normalizeRect(state.drawStart, getRelativePoint(event));
       render();
     });
 
-    el.pageCanvas.addEventListener("pointerup", () => {
+    el.pageCanvas.addEventListener("pointerup", (event) => {
+      if (endInteraction()) return;
       if (!state.drawing || !state.draft) return;
       const rect = state.draft;
+      const point = state.drawStart;
       state.drawing = false;
       state.draft = null;
-      createHotspot(rect);
+      createHotspot(
+        rect.width < 0.015 && rect.height < 0.015 && event.pointerType === "touch"
+          ? defaultRectAt(point)
+          : rect
+      );
+    });
+
+    el.pageCanvas.addEventListener("pointercancel", () => {
+      state.drawing = false;
+      state.draft = null;
+      state.interaction = null;
+      render();
     });
 
     el.pageSelect.addEventListener("change", () => {
@@ -1131,9 +1500,18 @@
     document.getElementById("deleteBtn").addEventListener("click", deleteSelected);
     document.getElementById("clearBtn").addEventListener("click", () => {
       state.selectedId = "";
+      openEditorPanel(false);
       render();
     });
     el.saveBtn.addEventListener("click", () => {
+      save().catch((error) => setStatus(error.message));
+    });
+    el.mobileAddBtn.addEventListener("click", createMobileHotspot);
+    el.mobileDetailsBtn.addEventListener("click", () => {
+      openEditorPanel(true);
+      setStatus(state.selectedId ? "Details bearbeiten." : "Bitte zuerst einen Hotspot auswählen.");
+    });
+    el.mobileSaveBtn.addEventListener("click", () => {
       save().catch((error) => setStatus(error.message));
     });
     [
