@@ -650,7 +650,7 @@
           linear-gradient(180deg, #172033 0%, #0f172a 100%);
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
-        touch-action: pan-x pan-y;
+        touch-action: none;
       }
 
       #pageCanvasWrap.zoomed {
@@ -663,7 +663,7 @@
         border-radius: 10px;
         overflow: hidden;
         box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
-        touch-action: pan-x pan-y;
+        touch-action: none;
       }
 
       #pageCanvas.mobile-placing {
@@ -998,6 +998,7 @@
       drawStart: null,
       interaction: null,
       pinch: null,
+      touchPointers: new Map(),
       sheetDrag: null,
       ignoreSheetClick: false,
       zoom: 1,
@@ -1915,6 +1916,67 @@
       }
     }
 
+    function touchPointerList() {
+      return Array.from(state.touchPointers.values());
+    }
+
+    function pointerDistance(points) {
+      const dx = points[0].clientX - points[1].clientX;
+      const dy = points[0].clientY - points[1].clientY;
+      return Math.hypot(dx, dy);
+    }
+
+    function pointerCenter(points) {
+      return {
+        x: (points[0].clientX + points[1].clientX) / 2,
+        y: (points[0].clientY + points[1].clientY) / 2
+      };
+    }
+
+    function startPointerPinchIfNeeded(event) {
+      if (!isMobileEditor() || event.pointerType !== "touch") return false;
+      state.touchPointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY
+      });
+
+      const points = touchPointerList();
+      if (points.length !== 2) return false;
+
+      state.pinch = {
+        distance: pointerDistance(points),
+        zoom: state.zoom
+      };
+      state.drawing = false;
+      state.draft = null;
+      setMobilePlacing(false);
+      return true;
+    }
+
+    function movePointerPinchIfNeeded(event) {
+      if (!isMobileEditor() || event.pointerType !== "touch" || !state.touchPointers.has(event.pointerId)) return false;
+      state.touchPointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY
+      });
+
+      const points = touchPointerList();
+      if (points.length !== 2 || !state.pinch) return false;
+
+      const distance = pointerDistance(points);
+      if (!state.pinch.distance) return true;
+      setEditorZoom(state.pinch.zoom * (distance / state.pinch.distance), pointerCenter(points));
+      return true;
+    }
+
+    function endPointerPinch(event) {
+      if (event.pointerType !== "touch") return;
+      state.touchPointers.delete(event.pointerId);
+      if (state.touchPointers.size < 2) {
+        state.pinch = null;
+      }
+    }
+
     function escapeHtml(value) {
       return String(value || "")
         .replace(/&/g, "&amp;")
@@ -1933,6 +1995,11 @@
       const target = event.target;
       const isCanvasSurface = target === el.pageCanvas || target === el.pageImage || target === el.pageCanvasWrap;
       if (!isCanvasSurface) return;
+
+      if (startPointerPinchIfNeeded(event)) {
+        event.preventDefault();
+        return;
+      }
 
       if (isMobileEditor()) {
         if (state.pinch) return;
@@ -1955,6 +2022,11 @@
     });
 
     el.pageCanvas.addEventListener("pointermove", (event) => {
+      if (movePointerPinchIfNeeded(event)) {
+        event.preventDefault();
+        return;
+      }
+
       if (state.interaction) {
         updateInteraction(event);
         return;
@@ -1966,6 +2038,7 @@
     });
 
     el.pageCanvas.addEventListener("pointerup", (event) => {
+      endPointerPinch(event);
       if (endInteraction()) return;
       if (!state.drawing || !state.draft) return;
       const rect = state.draft;
@@ -1979,7 +2052,8 @@
       );
     });
 
-    el.pageCanvas.addEventListener("pointercancel", () => {
+    el.pageCanvas.addEventListener("pointercancel", (event) => {
+      endPointerPinch(event);
       state.drawing = false;
       state.draft = null;
       state.interaction = null;
