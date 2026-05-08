@@ -288,35 +288,6 @@
       color: #fff;
     }
 
-    #mobileZoomTools {
-      display: none;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 8px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
-    }
-
-    #mobileZoomTools button {
-      min-width: 44px;
-      padding: 0 10px;
-    }
-
-    #mobileZoomTools button.active {
-      background: #dbeafe;
-      color: var(--brand-strong);
-    }
-
-    #zoomValue {
-      min-width: 54px;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 800;
-      text-align: center;
-    }
-
     #mobileSheetActions {
       display: none;
       gap: 8px;
@@ -602,9 +573,9 @@
         left: 14px;
         z-index: 31;
         display: grid;
-        grid-template-columns: 1.1fr 1fr 0.62fr 0.9fr 0.62fr;
-        gap: 6px;
-        padding: 6px;
+        grid-template-columns: 1.2fr 1fr 1fr;
+        gap: 8px;
+        padding: 7px;
         border: 1px solid rgba(226, 232, 240, 0.76);
         border-radius: 18px;
         background: rgba(248, 250, 252, 0.94);
@@ -613,8 +584,8 @@
       }
 
       #mobileTools button {
-        min-height: 38px;
-        padding: 0 5px;
+        min-height: 42px;
+        padding: 0 8px;
         border-radius: 14px;
         box-shadow: none;
         overflow: hidden;
@@ -622,8 +593,8 @@
         white-space: nowrap;
       }
 
-      #mobileSaveBtn {
-        display: none;
+      #mobileDeleteBtn {
+        color: #dc2626;
       }
 
       body.editor-panel-open #mobileTools {
@@ -647,15 +618,6 @@
         white-space: nowrap;
       }
 
-      #mobileZoomTools {
-        display: contents;
-        padding: 7px;
-      }
-
-      #mobileZoomTools button {
-        min-height: 32px;
-      }
-
       #pageCanvasWrap {
         height: calc(100vh - 56px);
         height: calc(100dvh - 56px);
@@ -669,6 +631,8 @@
           radial-gradient(circle at top, rgba(59, 130, 246, 0.28), transparent 34%),
           linear-gradient(180deg, #172033 0%, #0f172a 100%);
         -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        touch-action: pan-x pan-y;
       }
 
       #pageCanvasWrap.zoomed {
@@ -883,14 +847,9 @@
       </div>
 
       <div id="mobileTools">
-        <button type="button" class="secondary" id="mobileAddBtn">Hotspot</button>
+        <button type="button" class="secondary" id="mobileAddBtn">Hinzufügen</button>
         <button type="button" class="secondary" id="mobileDetailsBtn">Details</button>
-        <button type="button" class="secondary" id="mobileZoomOutBtn">-</button>
-        <button type="button" class="secondary active" id="mobileZoomResetBtn">
-          <span id="zoomValue">100%</span>
-        </button>
-        <button type="button" class="secondary" id="mobileZoomInBtn">+</button>
-        <button type="button" id="mobileSaveBtn">Speichern</button>
+        <button type="button" class="secondary" id="mobileDeleteBtn">Löschen</button>
       </div>
       <div id="mobileStatusToast" aria-live="polite"></div>
 
@@ -1016,6 +975,7 @@
       drawing: false,
       drawStart: null,
       interaction: null,
+      pinch: null,
       zoom: 1,
       mobileTab: "content",
       mobilePlacing: false,
@@ -1039,11 +999,7 @@
       saveBtn: document.getElementById("saveBtn"),
       mobileAddBtn: document.getElementById("mobileAddBtn"),
       mobileDetailsBtn: document.getElementById("mobileDetailsBtn"),
-      mobileSaveBtn: document.getElementById("mobileSaveBtn"),
-      mobileZoomOutBtn: document.getElementById("mobileZoomOutBtn"),
-      mobileZoomResetBtn: document.getElementById("mobileZoomResetBtn"),
-      mobileZoomInBtn: document.getElementById("mobileZoomInBtn"),
-      zoomValue: document.getElementById("zoomValue"),
+      mobileDeleteBtn: document.getElementById("mobileDeleteBtn"),
       mobileStatusToast: document.getElementById("mobileStatusToast"),
       openViewerBtn: document.getElementById("openViewerBtn"),
       typeInput: document.getElementById("typeInput"),
@@ -1204,16 +1160,19 @@
       el.pageCanvas?.classList.toggle("mobile-placing", state.mobilePlacing);
       el.mobileAddBtn?.classList.toggle("active", state.mobilePlacing);
       if (el.mobileAddBtn && isMobileEditor()) {
-        el.mobileAddBtn.innerText = state.mobilePlacing ? "Setzen" : "Hotspot";
+        el.mobileAddBtn.innerText = state.mobilePlacing ? "Setzen" : "Hinzufügen";
       }
     }
 
-    function setEditorZoom(value) {
+    function setEditorZoom(value, anchor = null) {
       const maxZoom = isMobileEditor() ? 4 : 2.5;
       const nextZoom = Math.max(1, Math.min(maxZoom, Number(value) || 1));
       const previousZoom = state.zoom;
+      const wrapRect = el.pageCanvasWrap?.getBoundingClientRect();
       const previousLeft = el.pageCanvasWrap?.scrollLeft || 0;
       const previousTop = el.pageCanvasWrap?.scrollTop || 0;
+      const anchorX = anchor && wrapRect ? anchor.x - wrapRect.left + previousLeft : null;
+      const anchorY = anchor && wrapRect ? anchor.y - wrapRect.top + previousTop : null;
       state.zoom = nextZoom;
 
       if (isMobileEditor()) {
@@ -1223,16 +1182,16 @@
       }
 
       el.pageCanvasWrap?.classList.toggle("zoomed", nextZoom > 1.01);
-      if (el.zoomValue) {
-        el.zoomValue.innerText = `${Math.round(nextZoom * 100)}%`;
-      }
-      el.mobileZoomResetBtn?.classList.toggle("active", Math.abs(nextZoom - 1) < 0.01);
-
       if (isMobileEditor() && el.pageCanvasWrap && previousZoom > 0 && Math.abs(previousZoom - nextZoom) > 0.01) {
         requestAnimationFrame(() => {
           const ratio = nextZoom / previousZoom;
-          el.pageCanvasWrap.scrollLeft = previousLeft * ratio;
-          el.pageCanvasWrap.scrollTop = previousTop * ratio;
+          if (anchorX !== null && anchorY !== null && wrapRect) {
+            el.pageCanvasWrap.scrollLeft = anchorX * ratio - (anchor.x - wrapRect.left);
+            el.pageCanvasWrap.scrollTop = anchorY * ratio - (anchor.y - wrapRect.top);
+          } else {
+            el.pageCanvasWrap.scrollLeft = previousLeft * ratio;
+            el.pageCanvasWrap.scrollTop = previousTop * ratio;
+          }
         });
       }
     }
@@ -1841,6 +1800,43 @@
         : "Platzierungsmodus beendet.");
     }
 
+    function getTouchDistance(touches) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.hypot(dx, dy);
+    }
+
+    function getTouchCenter(touches) {
+      return {
+        x: (touches[0].clientX + touches[1].clientX) / 2,
+        y: (touches[0].clientY + touches[1].clientY) / 2
+      };
+    }
+
+    function startMobilePinch(event) {
+      if (!isMobileEditor() || event.touches.length !== 2) return;
+      state.pinch = {
+        distance: getTouchDistance(event.touches),
+        zoom: state.zoom
+      };
+      setMobilePlacing(false);
+      event.preventDefault();
+    }
+
+    function moveMobilePinch(event) {
+      if (!isMobileEditor() || !state.pinch || event.touches.length !== 2) return;
+      const distance = getTouchDistance(event.touches);
+      if (!state.pinch.distance) return;
+      setEditorZoom(state.pinch.zoom * (distance / state.pinch.distance), getTouchCenter(event.touches));
+      event.preventDefault();
+    }
+
+    function endMobilePinch(event) {
+      if (event.touches.length < 2) {
+        state.pinch = null;
+      }
+    }
+
     function escapeHtml(value) {
       return String(value || "")
         .replace(/&/g, "&amp;")
@@ -1861,6 +1857,7 @@
       if (!isCanvasSurface) return;
 
       if (isMobileEditor()) {
+        if (state.pinch) return;
         if (!state.mobilePlacing) return;
         const point = getRelativePoint(event);
         createHotspot(defaultRectAt(point));
@@ -1910,6 +1907,10 @@
       state.interaction = null;
       render();
     });
+    el.pageCanvasWrap.addEventListener("touchstart", startMobilePinch, { passive: false });
+    el.pageCanvasWrap.addEventListener("touchmove", moveMobilePinch, { passive: false });
+    el.pageCanvasWrap.addEventListener("touchend", endMobilePinch, { passive: false });
+    el.pageCanvasWrap.addEventListener("touchcancel", endMobilePinch, { passive: false });
 
     el.pageSelect.addEventListener("change", () => {
       state.currentPage = Number(el.pageSelect.value) || 1;
@@ -1945,8 +1946,12 @@
       openEditorPanel(true);
       setStatus("Details bearbeiten.");
     });
-    el.mobileSaveBtn.addEventListener("click", () => {
-      save().catch((error) => setStatus(error.message));
+    el.mobileDeleteBtn.addEventListener("click", () => {
+      if (!state.selectedId) {
+        setStatus("Bitte zuerst einen Hotspot auswählen.");
+        return;
+      }
+      deleteSelected();
     });
     el.mobileSheetHandle.addEventListener("click", () => openEditorPanel(!el.editorPanel.classList.contains("open")));
     el.mobileCollapseBtn.addEventListener("click", () => openEditorPanel(false));
@@ -1959,9 +1964,6 @@
     });
     el.mobileContentTabBtn.addEventListener("click", () => setMobileTab("content"));
     el.mobileStyleTabBtn.addEventListener("click", () => setMobileTab("style"));
-    el.mobileZoomOutBtn.addEventListener("click", () => zoomBy(-0.2));
-    el.mobileZoomResetBtn.addEventListener("click", () => setEditorZoom(1));
-    el.mobileZoomInBtn.addEventListener("click", () => zoomBy(0.2));
     window.addEventListener("resize", () => setEditorZoom(isMobileEditor() ? state.zoom : 1));
     [
       el.typeInput,
