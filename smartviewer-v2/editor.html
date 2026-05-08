@@ -551,18 +551,18 @@
 
       #pageToolbar {
         position: absolute;
-        top: 10px;
-        right: 10px;
-        left: 10px;
+        top: 12px;
+        right: 14px;
+        left: 14px;
         z-index: 20;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 42px 42px;
-        gap: 7px;
-        padding: 7px;
+        grid-template-columns: minmax(0, 1fr) 40px 40px;
+        gap: 6px;
+        padding: 6px;
         border: 1px solid rgba(148, 163, 184, 0.28);
-        border-radius: 22px;
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.26);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
         backdrop-filter: blur(14px);
       }
 
@@ -583,49 +583,58 @@
       }
 
       #pageToolbar select {
-        min-height: 38px;
+        min-height: 36px;
         border: 0;
         background: transparent;
         font-weight: 800;
       }
 
       #pageToolbar button {
-        min-width: 42px;
-        min-height: 38px;
+        min-width: 40px;
+        min-height: 36px;
         padding: 0;
       }
 
       #mobileTools {
         position: absolute;
-        right: 10px;
-        bottom: calc(58px + env(safe-area-inset-bottom));
-        left: 10px;
+        right: 14px;
+        bottom: calc(14px + env(safe-area-inset-bottom));
+        left: 14px;
         z-index: 31;
         display: grid;
-        grid-template-columns: 1fr 1fr 0.64fr 0.86fr 0.64fr 1fr;
+        grid-template-columns: 1.1fr 1fr 0.62fr 0.9fr 0.62fr;
         gap: 6px;
-        padding: 7px;
-        border: 1px solid rgba(148, 163, 184, 0.28);
-        border-radius: 22px;
-        background: rgba(255, 255, 255, 0.88);
-        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.22);
+        padding: 6px;
+        border: 1px solid rgba(226, 232, 240, 0.76);
+        border-radius: 18px;
+        background: rgba(248, 250, 252, 0.94);
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.24);
         backdrop-filter: blur(16px);
       }
 
       #mobileTools button {
-        min-height: 36px;
-        padding: 0 6px;
+        min-height: 38px;
+        padding: 0 5px;
+        border-radius: 14px;
         box-shadow: none;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
+      #mobileSaveBtn {
+        display: none;
+      }
+
+      body.editor-panel-open #mobileTools {
+        display: none;
+      }
+
       #mobileStatusToast.show {
         position: absolute;
-        right: 18px;
-        bottom: calc(112px + env(safe-area-inset-bottom));
-        left: 18px;
+        right: 20px;
+        bottom: calc(68px + env(safe-area-inset-bottom));
+        left: 20px;
         z-index: 31;
         display: block;
         min-height: 20px;
@@ -651,7 +660,7 @@
         height: calc(100vh - 56px);
         height: calc(100dvh - 56px);
         max-height: none;
-        padding: 76px 10px calc(130px + env(safe-area-inset-bottom));
+        padding: 70px 10px calc(76px + env(safe-area-inset-bottom));
         border: 0;
         border-radius: 0;
         align-items: flex-start;
@@ -738,17 +747,17 @@
         right: 0;
         bottom: 0;
         left: 0;
-        z-index: 30;
-        max-height: min(78vh, calc(100vh - 90px));
-        max-height: min(78dvh, calc(100dvh - 90px));
+        z-index: 70;
+        max-height: calc(100vh - 54px);
+        max-height: calc(100dvh - 54px);
         display: block;
         overflow: auto;
-        padding: 10px 10px calc(108px + env(safe-area-inset-bottom));
-        border-top: 1px solid rgba(255, 255, 255, 0.7);
-        border-radius: 26px 26px 0 0;
-        background: rgba(241, 245, 249, 0.97);
-        box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.34);
-        transform: translateY(calc(100% - 28px));
+        padding: 10px 12px calc(20px + env(safe-area-inset-bottom));
+        border-top: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 22px 22px 0 0;
+        background: #f8fafc;
+        box-shadow: 0 -28px 70px rgba(0, 0, 0, 0.38);
+        transform: translateY(100%);
         transition: transform 220ms ease;
       }
 
@@ -772,8 +781,8 @@
 
       aside .panel {
         margin-bottom: 8px;
-        padding: 14px;
-        border-radius: 18px;
+        padding: 12px;
+        border-radius: 16px;
         box-shadow: none;
       }
 
@@ -808,14 +817,21 @@
         top: -10px;
         z-index: 2;
         display: flex;
-        padding: 8px 0 10px;
-        background: rgba(241, 245, 249, 0.97);
+        gap: 8px;
+        padding: 8px 0;
+        background: #f8fafc;
+      }
+
+      #mobileSheetActions button {
+        min-height: 40px;
+        border-radius: 14px;
       }
 
       #mobileSheetTabs {
         display: flex;
         padding: 4px;
-        border-radius: 999px;
+        margin-bottom: 8px;
+        border-radius: 16px;
         background: #e2e8f0;
       }
 
@@ -830,7 +846,8 @@
       }
 
       #mobileSheetTabs button {
-        min-height: 36px;
+        min-height: 38px;
+        border-radius: 13px;
       }
 
       .controlGrid {
@@ -1172,6 +1189,7 @@
         document.activeElement.blur();
       }
       el.editorPanel?.classList.toggle("open", open);
+      document.body.classList.toggle("editor-panel-open", Boolean(open && isMobileEditor()));
     }
 
     function setMobileTab(tab = "content") {
@@ -1919,9 +1937,13 @@
     });
     el.mobileAddBtn.addEventListener("click", createMobileHotspot);
     el.mobileDetailsBtn.addEventListener("click", () => {
+      if (!state.selectedId) {
+        setStatus("Bitte zuerst einen Hotspot auswählen.");
+        return;
+      }
       setMobileTab("content");
       openEditorPanel(true);
-      setStatus(state.selectedId ? "Details bearbeiten." : "Bitte zuerst einen Hotspot auswählen.");
+      setStatus("Details bearbeiten.");
     });
     el.mobileSaveBtn.addEventListener("click", () => {
       save().catch((error) => setStatus(error.message));
