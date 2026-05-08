@@ -256,15 +256,33 @@
     }
 
     #mobileSheetHandle {
-      width: 48px;
-      height: 5px;
+      position: relative;
+      width: 112px;
+      height: 32px;
       margin: 0 auto 10px;
-      min-height: 5px;
+      min-height: 32px;
       padding: 0;
       border: 0;
       border-radius: 999px;
-      background: #cbd5e1;
+      background: transparent;
       box-shadow: none;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #mobileSheetHandle::before {
+      content: "";
+      position: absolute;
+      top: 13px;
+      left: 32px;
+      width: 48px;
+      height: 5px;
+      border-radius: 999px;
+      background: #cbd5e1;
+    }
+
+    #mobileSheetHandle:active {
+      cursor: grabbing;
     }
 
     #mobileTools {
@@ -729,6 +747,10 @@
         transform: translateY(0);
       }
 
+      aside.sheet-dragging {
+        transition: none;
+      }
+
       aside:not(.open) {
         pointer-events: none;
         overflow: hidden;
@@ -976,6 +998,8 @@
       drawStart: null,
       interaction: null,
       pinch: null,
+      sheetDrag: null,
+      ignoreSheetClick: false,
       zoom: 1,
       mobileTab: "content",
       mobilePlacing: false,
@@ -1144,8 +1168,62 @@
       if (!open && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
+      if (el.editorPanel) {
+        el.editorPanel.style.transform = "";
+        el.editorPanel.classList.remove("sheet-dragging");
+      }
       el.editorPanel?.classList.toggle("open", open);
       document.body.classList.toggle("editor-panel-open", Boolean(open && isMobileEditor()));
+    }
+
+    function startSheetDrag(event) {
+      if (!isMobileEditor() || !el.editorPanel?.classList.contains("open")) return;
+      state.sheetDrag = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        lastY: event.clientY,
+        startedAt: performance.now(),
+        moved: false
+      };
+      el.editorPanel.classList.add("sheet-dragging");
+      el.mobileSheetHandle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    }
+
+    function moveSheetDrag(event) {
+      const drag = state.sheetDrag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const deltaY = Math.max(0, event.clientY - drag.startY);
+      drag.lastY = event.clientY;
+      drag.moved = drag.moved || deltaY > 8;
+      el.editorPanel.style.transform = `translateY(${deltaY}px)`;
+      event.preventDefault();
+    }
+
+    function endSheetDrag(event) {
+      const drag = state.sheetDrag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const deltaY = Math.max(0, drag.lastY - drag.startY);
+      const elapsed = Math.max(1, performance.now() - drag.startedAt);
+      const velocity = deltaY / elapsed;
+      state.sheetDrag = null;
+      el.editorPanel.classList.remove("sheet-dragging");
+      el.editorPanel.style.transform = "";
+
+      if (deltaY > 90 || velocity > 0.55) {
+        openEditorPanel(false);
+        setStatus("Details geschlossen.");
+      } else {
+        openEditorPanel(true);
+      }
+
+      if (drag.moved) {
+        state.ignoreSheetClick = true;
+        setTimeout(() => {
+          state.ignoreSheetClick = false;
+        }, 0);
+        event.preventDefault();
+      }
     }
 
     function setMobileTab(tab = "content") {
@@ -1953,7 +2031,14 @@
       }
       deleteSelected();
     });
-    el.mobileSheetHandle.addEventListener("click", () => openEditorPanel(!el.editorPanel.classList.contains("open")));
+    el.mobileSheetHandle.addEventListener("pointerdown", startSheetDrag);
+    el.mobileSheetHandle.addEventListener("pointermove", moveSheetDrag);
+    el.mobileSheetHandle.addEventListener("pointerup", endSheetDrag);
+    el.mobileSheetHandle.addEventListener("pointercancel", endSheetDrag);
+    el.mobileSheetHandle.addEventListener("click", () => {
+      if (state.sheetDrag || state.ignoreSheetClick) return;
+      openEditorPanel(!el.editorPanel.classList.contains("open"));
+    });
     el.mobileCollapseBtn.addEventListener("click", () => openEditorPanel(false));
     el.mobilePanelSaveBtn.addEventListener("click", () => {
       save()
