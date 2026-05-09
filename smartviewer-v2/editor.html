@@ -1042,6 +1042,7 @@
       sheetDrag: null,
       ignoreSheetClick: false,
       zoom: 1,
+      mobileFitWidth: 0,
       mobileTab: "content",
       mobilePlacing: false,
       dirty: false
@@ -1335,6 +1336,23 @@
       }
     }
 
+    function updateMobileFitWidth() {
+      if (!isMobileEditor() || !el.pageCanvasWrap || !el.pageImage?.naturalWidth || !el.pageImage?.naturalHeight) {
+        state.mobileFitWidth = 0;
+        return 0;
+      }
+
+      const wrapStyle = getComputedStyle(el.pageCanvasWrap);
+      const paddingX = parseFloat(wrapStyle.paddingLeft) + parseFloat(wrapStyle.paddingRight);
+      const paddingY = parseFloat(wrapStyle.paddingTop) + parseFloat(wrapStyle.paddingBottom);
+      const availableWidth = Math.max(220, el.pageCanvasWrap.clientWidth - paddingX);
+      const availableHeight = Math.max(220, el.pageCanvasWrap.clientHeight - paddingY);
+      const aspectRatio = el.pageImage.naturalWidth / el.pageImage.naturalHeight;
+      const widthFromHeight = availableHeight * aspectRatio;
+      state.mobileFitWidth = Math.max(180, Math.min(availableWidth, widthFromHeight));
+      return state.mobileFitWidth;
+    }
+
     function setEditorZoom(value, anchor = null) {
       const maxZoom = isMobileEditor() ? 4 : 2.5;
       const nextZoom = Math.max(1, Math.min(maxZoom, Number(value) || 1));
@@ -1347,9 +1365,12 @@
       state.zoom = nextZoom;
 
       if (isMobileEditor()) {
-        el.pageCanvas.style.setProperty("--mobile-canvas-width", `${Math.round(nextZoom * 100)}%`);
+        const fitWidth = state.mobileFitWidth || updateMobileFitWidth();
+        const canvasWidth = fitWidth ? `${Math.round(fitWidth * nextZoom)}px` : `${Math.round(nextZoom * 100)}%`;
+        el.pageCanvas.style.setProperty("--mobile-canvas-width", canvasWidth);
       } else {
         el.pageCanvas.style.removeProperty("--mobile-canvas-width");
+        state.mobileFitWidth = 0;
       }
 
       el.pageCanvasWrap?.classList.toggle("zoomed", nextZoom > 1.01);
@@ -1466,6 +1487,7 @@
     }
 
     function render() {
+      updateMobileFitWidth();
       setEditorZoom(state.zoom);
       setMobileTab(state.mobileTab);
       setMobilePlacing(state.mobilePlacing);
@@ -2425,7 +2447,14 @@
     });
     el.mobileContentTabBtn.addEventListener("click", () => setMobileTab("content"));
     el.mobileStyleTabBtn.addEventListener("click", () => setMobileTab("style"));
-    window.addEventListener("resize", () => setEditorZoom(isMobileEditor() ? state.zoom : 1));
+    el.pageImage.addEventListener("load", () => {
+      updateMobileFitWidth();
+      setEditorZoom(state.zoom);
+    });
+    window.addEventListener("resize", () => {
+      updateMobileFitWidth();
+      setEditorZoom(isMobileEditor() ? state.zoom : 1);
+    });
     [
       el.typeInput,
       el.titleInput,
