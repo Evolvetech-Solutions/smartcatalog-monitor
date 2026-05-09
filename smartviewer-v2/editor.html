@@ -255,6 +255,28 @@
       display: none;
     }
 
+    #touchDebug {
+      position: fixed;
+      right: 10px;
+      bottom: 10px;
+      left: 10px;
+      z-index: 9999;
+      display: none;
+      max-height: 180px;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.9);
+      color: #fff;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      pointer-events: none;
+    }
+
+    body.touch-debug #touchDebug {
+      display: block;
+    }
+
     #mobileSheetHandle {
       position: relative;
       width: 112px;
@@ -973,9 +995,14 @@
       </section>
     </aside>
   </main>
+  <div id="touchDebug" aria-hidden="true"></div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
+    const TOUCH_DEBUG = ["1", "true", "yes"].includes(String(params.get("touch_debug") || "").toLowerCase());
+    if (TOUCH_DEBUG) {
+      document.body.classList.add("touch-debug");
+    }
     const API_BASE = params.get("api_base") || window.location.origin;
     const catalogId = params.get("catalog") || "";
     const catalogItemId = params.get("id") || params.get("catalog_item_id") || "";
@@ -1028,6 +1055,7 @@
       mobileDetailsBtn: document.getElementById("mobileDetailsBtn"),
       mobileDeleteBtn: document.getElementById("mobileDeleteBtn"),
       mobileStatusToast: document.getElementById("mobileStatusToast"),
+      touchDebug: document.getElementById("touchDebug"),
       openViewerBtn: document.getElementById("openViewerBtn"),
       typeInput: document.getElementById("typeInput"),
       titleInput: document.getElementById("titleInput"),
@@ -1062,6 +1090,32 @@
         el.mobileStatusToast.innerText = message;
         el.mobileStatusToast.classList.toggle("show", Boolean(message));
       }
+    }
+
+    function updateTouchDebug(label, event, extra = {}) {
+      if (!TOUCH_DEBUG || !el.touchDebug) return;
+
+      const target = event?.target instanceof Element
+        ? `${event.target.tagName.toLowerCase()}${event.target.id ? `#${event.target.id}` : ""}${event.target.className ? `.${String(event.target.className).trim().replace(/\s+/g, ".")}` : ""}`
+        : "";
+      const touches = event?.touches
+        ? Array.from(event.touches)
+            .map((touch) => `${Math.round(touch.clientX)},${Math.round(touch.clientY)}`)
+            .join(" | ")
+        : "";
+
+      el.touchDebug.textContent = [
+        label,
+        `touches: ${event?.touches?.length ?? 0}`,
+        `target: ${target || "-"}`,
+        `inside: ${isInsideCanvasWrap(event?.target)}`,
+        `hotspot: ${isHotspotTouchTarget(event?.target)}`,
+        `zoom: ${Math.round(state.zoom * 100)}%`,
+        `gesture: ${state.mobileGesture?.mode || "-"}`,
+        `prevented: ${Boolean(event?.defaultPrevented)}`,
+        touches ? `points: ${touches}` : "",
+        ...Object.entries(extra).map(([key, value]) => `${key}: ${value}`)
+      ].filter(Boolean).join("\n");
     }
 
     function canSave() {
@@ -1903,16 +1957,22 @@
     }
 
     function shouldHandleMobileGesture(event) {
+      const touchCount = event.touches?.length || 0;
+      const isMultiTouch = touchCount >= 2;
+
       return Boolean(
         isMobileEditor() &&
         isInsideCanvasWrap(event.target) &&
-        !isHotspotTouchTarget(event.target) &&
+        (isMultiTouch || !isHotspotTouchTarget(event.target)) &&
         !el.editorPanel?.classList.contains("open")
       );
     }
 
     function beginMobileTouchGesture(event) {
-      if (!shouldHandleMobileGesture(event)) return;
+      if (!shouldHandleMobileGesture(event)) {
+        updateTouchDebug("ignored touchstart", event);
+        return;
+      }
 
       if (event.touches.length === 2) {
         state.mobileGesture = {
@@ -1924,6 +1984,7 @@
         state.pinch = state.mobileGesture;
         setMobilePlacing(false);
         event.preventDefault();
+        updateTouchDebug("pinch start", event);
         return;
       }
 
@@ -1937,11 +1998,15 @@
           scrollTop: el.pageCanvasWrap.scrollTop
         };
         event.preventDefault();
+        updateTouchDebug("pan start", event);
       }
     }
 
     function moveMobileTouchGesture(event) {
-      if (!shouldHandleMobileGesture(event) && !state.mobileGesture) return;
+      if (!shouldHandleMobileGesture(event) && !state.mobileGesture) {
+        updateTouchDebug("ignored touchmove", event);
+        return;
+      }
 
       if (event.touches.length === 2) {
         if (!state.mobileGesture || state.mobileGesture.mode !== "pinch") {
@@ -1959,6 +2024,7 @@
           setEditorZoom(state.mobileGesture.zoom * (distance / state.mobileGesture.distance), getTouchCenter(event.touches));
         }
         event.preventDefault();
+        updateTouchDebug("pinch move", event, { distance: Math.round(distance) });
         return;
       }
 
@@ -1967,10 +2033,15 @@
         el.pageCanvasWrap.scrollLeft = state.mobileGesture.scrollLeft - (touch.clientX - state.mobileGesture.startX);
         el.pageCanvasWrap.scrollTop = state.mobileGesture.scrollTop - (touch.clientY - state.mobileGesture.startY);
         event.preventDefault();
+        updateTouchDebug("pan move", event, {
+          scrollLeft: Math.round(el.pageCanvasWrap.scrollLeft),
+          scrollTop: Math.round(el.pageCanvasWrap.scrollTop)
+        });
       }
     }
 
     function endMobileTouchGesture(event) {
+      updateTouchDebug("touch end", event);
       if (event.touches.length === 0) {
         state.mobileGesture = null;
         state.pinch = null;
