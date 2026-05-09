@@ -688,6 +688,15 @@
         touch-action: none;
       }
 
+      #pageCanvas,
+      #pageCanvas *,
+      #pageImage {
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+
       #pageCanvas.mobile-placing {
         cursor: crosshair;
         outline: 3px solid rgba(37, 99, 235, 0.75);
@@ -1114,6 +1123,31 @@
         `gesture: ${state.mobileGesture?.mode || "-"}`,
         `prevented: ${Boolean(event?.defaultPrevented)}`,
         touches ? `points: ${touches}` : "",
+        ...Object.entries(extra).map(([key, value]) => `${key}: ${value}`)
+      ].filter(Boolean).join("\n");
+    }
+
+    function updatePointerDebug(label, event, extra = {}) {
+      if (!TOUCH_DEBUG || !el.touchDebug) return;
+
+      const target = event?.target instanceof Element
+        ? `${event.target.tagName.toLowerCase()}${event.target.id ? `#${event.target.id}` : ""}${event.target.className ? `.${String(event.target.className).trim().replace(/\s+/g, ".")}` : ""}`
+        : "";
+      const points = touchPointerList()
+        .map((point) => `${Math.round(point.clientX)},${Math.round(point.clientY)}`)
+        .join(" | ");
+
+      el.touchDebug.textContent = [
+        label,
+        `pointerType: ${event?.pointerType || "-"}`,
+        `activePointers: ${state.touchPointers.size}`,
+        `target: ${target || "-"}`,
+        `inside: ${isInsideCanvasWrap(event?.target)}`,
+        `hotspot: ${isHotspotTouchTarget(event?.target)}`,
+        `zoom: ${Math.round(state.zoom * 100)}%`,
+        `gesture: ${state.mobileGesture?.mode || "-"}`,
+        `prevented: ${Boolean(event?.defaultPrevented)}`,
+        points ? `points: ${points}` : "",
         ...Object.entries(extra).map(([key, value]) => `${key}: ${value}`)
       ].filter(Boolean).join("\n");
     }
@@ -2104,6 +2138,90 @@
       };
     }
 
+    function isMobileCanvasPointerEvent(event) {
+      return Boolean(
+        isMobileEditor() &&
+        event.pointerType === "touch" &&
+        isInsideCanvasWrap(event.target) &&
+        !el.editorPanel?.classList.contains("open")
+      );
+    }
+
+    function startMobilePointerGesture(event) {
+      if (!isMobileCanvasPointerEvent(event)) return;
+
+      state.touchPointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY
+      });
+
+      const points = touchPointerList();
+      if (points.length < 2) {
+        updatePointerDebug("pointer ready", event);
+        return;
+      }
+
+      state.mobileGesture = {
+        mode: "pinch-pointer",
+        distance: pointerDistance(points),
+        zoom: state.zoom,
+        center: pointerCenter(points)
+      };
+      state.pinch = state.mobileGesture;
+      state.drawing = false;
+      state.drawStart = null;
+      state.draft = null;
+      state.interaction = null;
+      setMobilePlacing(false);
+      event.preventDefault();
+      event.stopPropagation();
+      updatePointerDebug("pointer pinch start", event);
+    }
+
+    function moveMobilePointerGesture(event) {
+      if (event.pointerType !== "touch" || !state.touchPointers.has(event.pointerId)) return;
+
+      state.touchPointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY
+      });
+
+      const points = touchPointerList();
+      if (points.length < 2) return;
+
+      if (!state.mobileGesture || state.mobileGesture.mode !== "pinch-pointer") {
+        state.mobileGesture = {
+          mode: "pinch-pointer",
+          distance: pointerDistance(points),
+          zoom: state.zoom,
+          center: pointerCenter(points)
+        };
+        state.pinch = state.mobileGesture;
+      }
+
+      const distance = pointerDistance(points);
+      if (state.mobileGesture.distance) {
+        setEditorZoom(state.mobileGesture.zoom * (distance / state.mobileGesture.distance), pointerCenter(points));
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      updatePointerDebug("pointer pinch move", event, { distance: Math.round(distance) });
+    }
+
+    function endMobilePointerGesture(event) {
+      if (event.pointerType !== "touch") return;
+
+      state.touchPointers.delete(event.pointerId);
+      updatePointerDebug("pointer end", event);
+
+      if (state.touchPointers.size < 2 && state.mobileGesture?.mode === "pinch-pointer") {
+        state.mobileGesture = null;
+        state.pinch = null;
+        state.pinchGuardActive = false;
+      }
+    }
+
     function startPointerPinchIfNeeded(event) {
       if (!isMobileEditor() || event.pointerType !== "touch") return false;
       state.touchPointers.set(event.pointerId, {
@@ -2235,6 +2353,16 @@
     document.addEventListener("touchmove", moveMobileTouchGesture, { capture: true, passive: false });
     document.addEventListener("touchend", endMobileTouchGesture, { capture: true, passive: false });
     document.addEventListener("touchcancel", endMobileTouchGesture, { capture: true, passive: false });
+    document.addEventListener("pointerdown", startMobilePointerGesture, { capture: true, passive: false });
+    document.addEventListener("pointermove", moveMobilePointerGesture, { capture: true, passive: false });
+    document.addEventListener("pointerup", endMobilePointerGesture, { capture: true, passive: false });
+    document.addEventListener("pointercancel", endMobilePointerGesture, { capture: true, passive: false });
+    document.addEventListener("gesturestart", (event) => {
+      if (isMobileEditor() && isInsideCanvasWrap(event.target)) event.preventDefault();
+    }, { capture: true, passive: false });
+    document.addEventListener("gesturechange", (event) => {
+      if (isMobileEditor() && isInsideCanvasWrap(event.target)) event.preventDefault();
+    }, { capture: true, passive: false });
 
     el.pageSelect.addEventListener("change", () => {
       state.currentPage = Number(el.pageSelect.value) || 1;
