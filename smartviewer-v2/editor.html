@@ -1000,6 +1000,7 @@
       pinch: null,
       pinchGuardActive: false,
       touchPointers: new Map(),
+      mobileGesture: null,
       sheetDrag: null,
       ignoreSheetClick: false,
       zoom: 1,
@@ -1897,10 +1898,97 @@
       return Boolean(el.pageCanvasWrap && target instanceof Node && el.pageCanvasWrap.contains(target));
     }
 
-    function guardMobilePinchScroll(event) {
-      if (!isMobileEditor() || event.touches.length < 2 || !isInsideCanvasWrap(event.target)) return;
-      state.pinchGuardActive = true;
-      event.preventDefault();
+    function isHotspotTouchTarget(target) {
+      return Boolean(target instanceof Element && target.closest(".hotspot,.resizeHandle"));
+    }
+
+    function shouldHandleMobileGesture(event) {
+      return Boolean(
+        isMobileEditor() &&
+        isInsideCanvasWrap(event.target) &&
+        !isHotspotTouchTarget(event.target) &&
+        !el.editorPanel?.classList.contains("open")
+      );
+    }
+
+    function beginMobileTouchGesture(event) {
+      if (!shouldHandleMobileGesture(event)) return;
+
+      if (event.touches.length === 2) {
+        state.mobileGesture = {
+          mode: "pinch",
+          distance: getTouchDistance(event.touches),
+          zoom: state.zoom,
+          center: getTouchCenter(event.touches)
+        };
+        state.pinch = state.mobileGesture;
+        setMobilePlacing(false);
+        event.preventDefault();
+        return;
+      }
+
+      if (event.touches.length === 1 && state.zoom > 1.01 && !state.mobilePlacing) {
+        const touch = event.touches[0];
+        state.mobileGesture = {
+          mode: "pan",
+          startX: touch.clientX,
+          startY: touch.clientY,
+          scrollLeft: el.pageCanvasWrap.scrollLeft,
+          scrollTop: el.pageCanvasWrap.scrollTop
+        };
+        event.preventDefault();
+      }
+    }
+
+    function moveMobileTouchGesture(event) {
+      if (!shouldHandleMobileGesture(event) && !state.mobileGesture) return;
+
+      if (event.touches.length === 2) {
+        if (!state.mobileGesture || state.mobileGesture.mode !== "pinch") {
+          state.mobileGesture = {
+            mode: "pinch",
+            distance: getTouchDistance(event.touches),
+            zoom: state.zoom,
+            center: getTouchCenter(event.touches)
+          };
+        }
+
+        state.pinch = state.mobileGesture;
+        const distance = getTouchDistance(event.touches);
+        if (state.mobileGesture.distance) {
+          setEditorZoom(state.mobileGesture.zoom * (distance / state.mobileGesture.distance), getTouchCenter(event.touches));
+        }
+        event.preventDefault();
+        return;
+      }
+
+      if (event.touches.length === 1 && state.mobileGesture?.mode === "pan") {
+        const touch = event.touches[0];
+        el.pageCanvasWrap.scrollLeft = state.mobileGesture.scrollLeft - (touch.clientX - state.mobileGesture.startX);
+        el.pageCanvasWrap.scrollTop = state.mobileGesture.scrollTop - (touch.clientY - state.mobileGesture.startY);
+        event.preventDefault();
+      }
+    }
+
+    function endMobileTouchGesture(event) {
+      if (event.touches.length === 0) {
+        state.mobileGesture = null;
+        state.pinch = null;
+        state.pinchGuardActive = false;
+        return;
+      }
+
+      if (event.touches.length === 1 && state.mobileGesture?.mode === "pinch" && state.zoom > 1.01) {
+        const touch = event.touches[0];
+        state.mobileGesture = {
+          mode: "pan",
+          startX: touch.clientX,
+          startY: touch.clientY,
+          scrollLeft: el.pageCanvasWrap.scrollLeft,
+          scrollTop: el.pageCanvasWrap.scrollTop
+        };
+        state.pinch = null;
+      }
     }
 
     function startMobilePinch(event) {
@@ -2072,12 +2160,10 @@
       state.interaction = null;
       render();
     });
-    document.addEventListener("touchstart", guardMobilePinchScroll, { capture: true, passive: false });
-    document.addEventListener("touchmove", guardMobilePinchScroll, { capture: true, passive: false });
-    el.pageCanvasWrap.addEventListener("touchstart", startMobilePinch, { capture: true, passive: false });
-    el.pageCanvasWrap.addEventListener("touchmove", moveMobilePinch, { capture: true, passive: false });
-    el.pageCanvasWrap.addEventListener("touchend", endMobilePinch, { capture: true, passive: false });
-    el.pageCanvasWrap.addEventListener("touchcancel", endMobilePinch, { capture: true, passive: false });
+    document.addEventListener("touchstart", beginMobileTouchGesture, { capture: true, passive: false });
+    document.addEventListener("touchmove", moveMobileTouchGesture, { capture: true, passive: false });
+    document.addEventListener("touchend", endMobileTouchGesture, { capture: true, passive: false });
+    document.addEventListener("touchcancel", endMobileTouchGesture, { capture: true, passive: false });
 
     el.pageSelect.addEventListener("change", () => {
       state.currentPage = Number(el.pageSelect.value) || 1;
