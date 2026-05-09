@@ -998,6 +998,7 @@
       drawStart: null,
       interaction: null,
       pinch: null,
+      pinchGuardActive: false,
       touchPointers: new Map(),
       sheetDrag: null,
       ignoreSheetClick: false,
@@ -1892,6 +1893,16 @@
       };
     }
 
+    function isInsideCanvasWrap(target) {
+      return Boolean(el.pageCanvasWrap && target instanceof Node && el.pageCanvasWrap.contains(target));
+    }
+
+    function guardMobilePinchScroll(event) {
+      if (!isMobileEditor() || event.touches.length < 2 || !isInsideCanvasWrap(event.target)) return;
+      state.pinchGuardActive = true;
+      event.preventDefault();
+    }
+
     function startMobilePinch(event) {
       if (!isMobileEditor() || event.touches.length !== 2) return;
       state.pinch = {
@@ -1913,6 +1924,7 @@
     function endMobilePinch(event) {
       if (event.touches.length < 2) {
         state.pinch = null;
+        state.pinchGuardActive = false;
       }
     }
 
@@ -1974,6 +1986,7 @@
       state.touchPointers.delete(event.pointerId);
       if (state.touchPointers.size < 2) {
         state.pinch = null;
+        state.pinchGuardActive = false;
       }
     }
 
@@ -2059,10 +2072,12 @@
       state.interaction = null;
       render();
     });
-    el.pageCanvasWrap.addEventListener("touchstart", startMobilePinch, { passive: false });
-    el.pageCanvasWrap.addEventListener("touchmove", moveMobilePinch, { passive: false });
-    el.pageCanvasWrap.addEventListener("touchend", endMobilePinch, { passive: false });
-    el.pageCanvasWrap.addEventListener("touchcancel", endMobilePinch, { passive: false });
+    document.addEventListener("touchstart", guardMobilePinchScroll, { capture: true, passive: false });
+    document.addEventListener("touchmove", guardMobilePinchScroll, { capture: true, passive: false });
+    el.pageCanvasWrap.addEventListener("touchstart", startMobilePinch, { capture: true, passive: false });
+    el.pageCanvasWrap.addEventListener("touchmove", moveMobilePinch, { capture: true, passive: false });
+    el.pageCanvasWrap.addEventListener("touchend", endMobilePinch, { capture: true, passive: false });
+    el.pageCanvasWrap.addEventListener("touchcancel", endMobilePinch, { capture: true, passive: false });
 
     el.pageSelect.addEventListener("change", () => {
       state.currentPage = Number(el.pageSelect.value) || 1;
