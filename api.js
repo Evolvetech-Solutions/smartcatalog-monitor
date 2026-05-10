@@ -45,7 +45,6 @@ const CATALOG_HOTSPOTS_FILE = "./catalog-hotspots.json";
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
 const PRODUCT_IMAGE_DIR = path.join(CUSTOMER_ASSETS_DIR, "products");
-const MAX_CATALOG_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_PRODUCT_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_PRODUCT_IMAGES_PER_HOTSPOT = 3;
 const execFileAsync = promisify(execFile);
@@ -56,21 +55,44 @@ const PLAN_CONFIG = {
     name: "SmartCatalog Starter",
     priceId: process.env.STRIPE_PRICE_STARTER || "price_1TRyCQI4jptXbvXif1g4KWn3",
     catalogLimit: 5,
-    uploadLimitMb: 20
+    uploadLimitMb: 20,
+    features: {
+      hotspotTypes: ["link", "page"],
+      productImages: false,
+      analytics: false,
+      prioritySupport: false
+    }
   },
   business: {
     name: "SmartCatalog Business",
     priceId: process.env.STRIPE_PRICE_BUSINESS || "price_1TRyGkI4jptXbvXiBIXqdKPK",
     catalogLimit: 25,
-    uploadLimitMb: 20
+    uploadLimitMb: 50,
+    features: {
+      hotspotTypes: ["link", "page", "product"],
+      productImages: true,
+      analytics: false,
+      prioritySupport: false
+    }
   },
   pro: {
     name: "SmartCatalog Pro",
     priceId: process.env.STRIPE_PRICE_PRO || "price_1TRyISI4jptXbvXi18VA4sRn",
-    catalogLimit: 100,
-    uploadLimitMb: 20
+    catalogLimit: null,
+    uploadLimitMb: 100,
+    features: {
+      hotspotTypes: ["link", "page", "product", "video", "note"],
+      productImages: true,
+      analytics: true,
+      prioritySupport: true
+    }
   }
 };
+
+const MAX_CATALOG_UPLOAD_BYTES =
+  Math.max(...Object.values(PLAN_CONFIG).map((plan) => plan.uploadLimitMb)) *
+  1024 *
+  1024;
 
 async function ensureRuntimeDirs() {
   await Promise.all([
@@ -289,8 +311,10 @@ function buildCustomerProfile(customer) {
     subscription_current_period_end:
       customer.subscription_current_period_end || null,
     subscription_cancel_at_period_end: Boolean(customer.subscription_cancel_at_period_end),
-    catalog_limit: planConfig?.catalogLimit || 0,
+    catalog_limit: getCatalogLimit(planConfig),
+    catalogs_unlimited: isCatalogLimitUnlimited(planConfig),
     upload_limit_mb: planConfig?.uploadLimitMb || 20,
+    features: buildPlanFeatures(planConfig),
     is_active: customer.is_active !== false,
     created_at: customer.created_at || null,
     updated_at: customer.updated_at || null
@@ -570,12 +594,106 @@ function getPlanConfig(plan) {
   return PLAN_CONFIG[String(plan || "").toLowerCase()] || null;
 }
 
+function isCatalogLimitUnlimited(planConfig) {
+  return planConfig?.catalogLimit === null;
+}
+
+function getCatalogLimit(planConfig) {
+  return isCatalogLimitUnlimited(planConfig) ? null : planConfig?.catalogLimit || 0;
+}
+
+function getCatalogsRemaining(planConfig, catalogCount) {
+  if (!planConfig) return 0;
+  if (isCatalogLimitUnlimited(planConfig)) return null;
+  return Math.max(0, planConfig.catalogLimit - catalogCount);
+}
+
+function canCreateCatalog(planConfig, catalogCount) {
+  return Boolean(
+    planConfig &&
+    (isCatalogLimitUnlimited(planConfig) || catalogCount < planConfig.catalogLimit)
+  );
+}
+
+function buildPlanFeatures(planConfig) {
+  const features = planConfig?.features || {};
+  return {
+    hotspot_types: features.hotspotTypes || [],
+    product_images: Boolean(features.productImages),
+    product_images_max: features.productImages ? MAX_PRODUCT_IMAGES_PER_HOTSPOT : 0,
+    product_image_limit_mb: features.productImages
+      ? Math.round(MAX_PRODUCT_IMAGE_BYTES / 1024 / 1024)
+      : 0,
+    analytics: Boolean(features.analytics),
+    priority_support: Boolean(features.prioritySupport)
+  };
+}
+
+function buildPublicPlan(id, planConfig) {
+  return {
+    id,
+    name: planConfig.name,
+    price_id: planConfig.priceId,
+    catalog_limit: getCatalogLimit(planConfig),
+    catalogs_unlimited: isCatalogLimitUnlimited(planConfig),
+    upload_limit_mb: planConfig.uploadLimitMb,
+    features: buildPlanFeatures(planConfig)
+  };
+}
+
 function isSubscriptionActive(status) {
   return ["active", "trialing"].includes(String(status || ""));
 }
 
 function countCustomerCatalogs(urls, customerNumber) {
   return urls.filter((item) => item.customer_number === customerNumber).length;
+}
+
+async function findCustomerByNumber(customerNumber) {
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  return customers.find(
+    (entry) => entry.customer_number === String(customerNumber)
+  ) || null;
+}
+
+function validateHotspotsForPlan(hotspots, planConfig) {
+  const normalizedHotspots = normalizeHotspots(hotspots);
+  const allowedTypes = new Set(planConfig?.features?.hotspotTypes || []);
+  const blockedHotspot = normalizedHotspots.find(
+    (hotspot) => !allowedTypes.has(hotspot.type)
+  );
+
+  if (blockedHotspot) {
+    return {
+      valid: false,
+      status: 403,
+      body: {
+        error: `${planConfig?.name || "Dieses Abo"} erlaubt keine ${blockedHotspot.type}-Hotspots.`,
+        code: "HOTSPOT_FEATURE_NOT_INCLUDED",
+        blocked_type: blockedHotspot.type,
+        allowed_types: [...allowedTypes],
+        upgrade_required: true
+      }
+    };
+  }
+
+  return {
+    valid: true,
+    hotspots: normalizedHotspots
+  };
+}
+
+function ensureProductImageFeature(planConfig) {
+  if (planConfig?.features?.productImages) return null;
+
+  return {
+    status: 403,
+    body: {
+      error: `${planConfig?.name || "Dieses Abo"} erlaubt keine Produktbilder.`,
+      code: "PRODUCT_IMAGES_NOT_INCLUDED",
+      upgrade_required: true
+    }
+  };
 }
 
 function buildSubscriptionBlockedResponse(customer, urls) {
@@ -603,13 +721,14 @@ function buildSubscriptionBlockedResponse(customer, urls) {
         plan,
         subscription_status: subscriptionStatus,
         catalog_count: catalogCount,
-        catalog_limit: planConfig?.catalogLimit || 0,
+        catalog_limit: getCatalogLimit(planConfig),
+        catalogs_unlimited: isCatalogLimitUnlimited(planConfig),
         upgrade_required: true
       }
     };
   }
 
-  if (catalogCount >= planConfig.catalogLimit) {
+  if (!canCreateCatalog(planConfig, catalogCount)) {
     return {
       status: 403,
       body: {
@@ -618,7 +737,8 @@ function buildSubscriptionBlockedResponse(customer, urls) {
         plan,
         subscription_status: subscriptionStatus,
         catalog_count: catalogCount,
-        catalog_limit: planConfig.catalogLimit,
+        catalog_limit: getCatalogLimit(planConfig),
+        catalogs_unlimited: isCatalogLimitUnlimited(planConfig),
         upgrade_required: true
       }
     };
@@ -1140,6 +1260,7 @@ app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
   const customer = customers.find(
     (entry) => entry.customer_number === catalog.customer_number
   );
+  const planConfig = getPlanConfig(customer?.plan);
   const pages = await getCatalogPages(catalogId);
   const hotspots = await readCatalogHotspots(catalogId);
 
@@ -1158,7 +1279,9 @@ app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
       swipe: true,
       pinch_zoom: true,
       pan_when_zoomed: true,
-      hotspots: true
+      hotspots: true,
+      plan: customer?.plan || "free",
+      plan_features: buildPlanFeatures(planConfig)
     }
   });
 });
@@ -1637,13 +1760,7 @@ app.put("/api/customer/password", customerAuth, async (req, res) => {
 
 app.get("/api/customer/billing/plans", customerAuth, async (req, res) => {
   res.json({
-    plans: Object.entries(PLAN_CONFIG).map(([id, plan]) => ({
-      id,
-      name: plan.name,
-      price_id: plan.priceId,
-      catalog_limit: plan.catalogLimit,
-      upload_limit_mb: plan.uploadLimitMb
-    }))
+    plans: Object.entries(PLAN_CONFIG).map(([id, plan]) => buildPublicPlan(id, plan))
   });
 });
 
@@ -1671,14 +1788,14 @@ app.get("/api/customer/billing/usage", customerAuth, async (req, res) => {
     subscription_current_period_end: customer.subscription_current_period_end || null,
     subscription_cancel_at_period_end: Boolean(customer.subscription_cancel_at_period_end),
     catalog_count: catalogCount,
-    catalog_limit: planConfig?.catalogLimit || 0,
-    catalogs_remaining: planConfig
-      ? Math.max(0, planConfig.catalogLimit - catalogCount)
-      : 0,
+    catalog_limit: getCatalogLimit(planConfig),
+    catalogs_unlimited: isCatalogLimitUnlimited(planConfig),
+    catalogs_remaining: getCatalogsRemaining(planConfig, catalogCount),
     upload_limit_mb: planConfig?.uploadLimitMb || 20,
+    features: buildPlanFeatures(planConfig),
     can_create_catalog:
       Boolean(planConfig && isSubscriptionActive(subscriptionStatus)) &&
-      catalogCount < planConfig.catalogLimit
+      canCreateCatalog(planConfig, catalogCount)
   });
 });
 
@@ -1876,7 +1993,9 @@ app.use((error, req, res, next) => {
     req.path.includes("/hotspots/") && req.path.includes("/images");
 
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    const uploadError = isProductImageUpload ? "Produktbild größer als 3 MB" : "Datei größer als 20 MB";
+    const uploadError = isProductImageUpload
+      ? "Produktbild groesser als 3 MB"
+      : `Datei groesser als ${Math.round(MAX_CATALOG_UPLOAD_BYTES / 1024 / 1024)} MB`;
     return res.status(413).json({ error: uploadError });
   }
 
@@ -2170,11 +2289,15 @@ app.get("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) =>
   }
 
   const hotspots = await readCatalogHotspots(catalog.catalog_id);
+  const customer = await findCustomerByNumber(req.customer.customer_number);
+  const planConfig = getPlanConfig(customer?.plan);
 
   res.json({
     catalog_id: catalog.catalog_id,
     catalog_title: catalog.title || catalog.name || "",
-    hotspots
+    hotspots,
+    plan: customer?.plan || "free",
+    features: buildPlanFeatures(planConfig)
   });
 });
 
@@ -2192,9 +2315,17 @@ app.put("/api/customer/catalogs/:id/hotspots", customerAuth, async (req, res) =>
     return res.status(400).json({ error: "Katalog hat keine catalog_id" });
   }
 
+  const customer = await findCustomerByNumber(req.customer.customer_number);
+  const planConfig = getPlanConfig(customer?.plan);
+  const validation = validateHotspotsForPlan(req.body.hotspots || [], planConfig);
+
+  if (!validation.valid) {
+    return res.status(validation.status).json(validation.body);
+  }
+
   const hotspots = await writeCatalogHotspots(
     catalog.catalog_id,
-    req.body.hotspots || []
+    validation.hotspots
   );
 
   res.json({
@@ -2222,6 +2353,15 @@ app.post(
     if (!catalog.catalog_id) {
       await deleteUploadedProductFiles(req.files);
       return res.status(400).json({ error: "Katalog hat keine catalog_id" });
+    }
+
+    const customer = await findCustomerByNumber(req.customer.customer_number);
+    const planConfig = getPlanConfig(customer?.plan);
+    const blocked = ensureProductImageFeature(planConfig);
+
+    if (blocked) {
+      await deleteUploadedProductFiles(req.files);
+      return res.status(blocked.status).json(blocked.body);
     }
 
     const result = await appendProductImages(catalog.catalog_id, req.params.hotspotId, req.files);
@@ -2263,12 +2403,16 @@ app.get("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots", editorAuth, a
   }
 
   const hotspots = await readCatalogHotspots(catalog.catalog_id);
+  const customer = await findCustomerByNumber(req.editor.customer_number);
+  const planConfig = getPlanConfig(customer?.plan);
 
   res.json({
     catalog_id: catalog.catalog_id,
     id: catalog.id,
     catalog_title: catalog.title || catalog.name || "",
-    hotspots
+    hotspots,
+    plan: customer?.plan || "free",
+    features: buildPlanFeatures(planConfig)
   });
 });
 
@@ -2286,9 +2430,17 @@ app.put("/api/smartviewer-v2/editor/catalogs/:catalogId/hotspots", editorAuth, a
     return res.status(404).json({ error: "Katalog nicht gefunden" });
   }
 
+  const customer = await findCustomerByNumber(req.editor.customer_number);
+  const planConfig = getPlanConfig(customer?.plan);
+  const validation = validateHotspotsForPlan(req.body.hotspots || [], planConfig);
+
+  if (!validation.valid) {
+    return res.status(validation.status).json(validation.body);
+  }
+
   const hotspots = await writeCatalogHotspots(
     catalog.catalog_id,
-    req.body.hotspots || []
+    validation.hotspots
   );
 
   res.json({
@@ -2317,6 +2469,15 @@ app.post(
     if (!catalog) {
       await deleteUploadedProductFiles(req.files);
       return res.status(404).json({ error: "Katalog nicht gefunden" });
+    }
+
+    const customer = await findCustomerByNumber(req.editor.customer_number);
+    const planConfig = getPlanConfig(customer?.plan);
+    const blocked = ensureProductImageFeature(planConfig);
+
+    if (blocked) {
+      await deleteUploadedProductFiles(req.files);
+      return res.status(blocked.status).json(blocked.body);
     }
 
     const result = await appendProductImages(catalog.catalog_id, req.params.hotspotId, req.files);
@@ -2593,7 +2754,9 @@ app.use((error, req, res, next) => {
     req.path.includes("/hotspots/") && req.path.includes("/images");
 
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    const uploadError = isProductImageUpload ? "Produktbild größer als 3 MB" : "Datei größer als 20 MB";
+    const uploadError = isProductImageUpload
+      ? "Produktbild groesser als 3 MB"
+      : `Datei groesser als ${Math.round(MAX_CATALOG_UPLOAD_BYTES / 1024 / 1024)} MB`;
     return res.status(413).json({ error: uploadError });
   }
 

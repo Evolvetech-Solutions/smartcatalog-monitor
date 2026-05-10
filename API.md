@@ -276,6 +276,16 @@ GET /api/customer/billing/plans
 Authorization: Bearer <CUSTOMER_JWT>
 ```
 
+Aktuelles Tarif-Regelwerk:
+
+| Tarif | Preis | Kataloge | PDF-Upload | Hotspots |
+| --- | ---: | ---: | ---: | --- |
+| SmartCatalog Starter | 19 EUR/Monat | 5 | 20 MB | Link, Seitensprung |
+| SmartCatalog Business | 49 EUR/Monat | 25 | 50 MB | Link, Seitensprung, Produkt |
+| SmartCatalog Pro | 99 EUR/Monat | unbegrenzt | 100 MB | Link, Seitensprung, Produkt, Video, Notiz |
+
+Produktbilder sind nur in Business und Pro erlaubt. Pro Produkt-Hotspot sind maximal 3 Bilder mit je 3 MB erlaubt.
+
 Aktuelle Abo-Nutzung abrufen:
 
 ```http
@@ -295,13 +305,22 @@ Antwort:
   "subscription_cancel_at_period_end": false,
   "catalog_count": 3,
   "catalog_limit": 5,
+  "catalogs_unlimited": false,
   "catalogs_remaining": 2,
   "upload_limit_mb": 20,
+  "features": {
+    "hotspot_types": ["link", "page"],
+    "product_images": false,
+    "product_images_max": 0,
+    "product_image_limit_mb": 0,
+    "analytics": false,
+    "priority_support": false
+  },
   "can_create_catalog": true
 }
 ```
 
-Neue Kataloge koennen nur erstellt werden, wenn `subscription_active` true ist und `catalog_count` kleiner als `catalog_limit` ist. Bei ueberschrittenem Limit antwortet die API mit `CATALOG_LIMIT_REACHED`, bei fehlendem/ungueltigem Abo mit `SUBSCRIPTION_REQUIRED`.
+Neue Kataloge koennen nur erstellt werden, wenn `subscription_active` true ist und noch Kapazitaet vorhanden ist. Bei Pro ist `catalog_limit` und `catalogs_remaining` `null`, dafuer ist `catalogs_unlimited` true. Bei ueberschrittenem Limit antwortet die API mit `CATALOG_LIMIT_REACHED`, bei fehlendem/ungueltigem Abo mit `SUBSCRIPTION_REQUIRED`.
 
 PDF-Katalog hochladen:
 
@@ -489,7 +508,11 @@ Unterstuetzte Hotspot-Typen:
 - `video`: Videolink
 - `note`: reine Info
 
+Die erlaubten Typen haengen vom aktiven Abo ab: Starter darf `link` und `page`, Business darf zusaetzlich `product`, Pro darf alle Typen. Nicht freigeschaltete Typen werden beim Speichern mit `HOTSPOT_FEATURE_NOT_INCLUDED` abgelehnt.
+
 Produktbilder koennen direkt am Produkt-Hotspot hochgeladen werden. Pro Hotspot sind maximal 3 Bilder erlaubt, je Bild maximal 3 MB. Erlaubte Formate: JPG, PNG, WEBP und GIF.
+
+Produktbild-Uploads sind nur in Business und Pro erlaubt. Starter erhaelt `PRODUCT_IMAGES_NOT_INCLUDED`.
 
 ```http
 POST /api/customer/catalogs/:id/hotspots/:hotspotId/images

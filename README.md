@@ -99,6 +99,14 @@ Abos laufen ueber Stripe Billing. Kunden koennen ueber `POST /api/customer/billi
 
 Neue Kundenkataloge sind backendseitig an ein aktives Abo gebunden. `GET /api/customer/billing/usage` liefert Plan, Status, Kataloglimit, aktuelle Nutzung und `can_create_catalog`. Upload und Kataloganlage blockieren fehlende Abos (`SUBSCRIPTION_REQUIRED`) und erreichte Limits (`CATALOG_LIMIT_REACHED`).
 
+Aktuelles Abo-Regelwerk:
+
+- SmartCatalog Starter: 5 aktive Kataloge, 20 MB PDF-Upload, Link- und Seitensprung-Hotspots
+- SmartCatalog Business: 25 aktive Kataloge, 50 MB PDF-Upload, Link-, Seitensprung- und Produkt-Hotspots, bis zu 3 Produktbilder je Produkt-Hotspot
+- SmartCatalog Pro: unbegrenzt aktive Kataloge, 100 MB PDF-Upload, alle Business-Funktionen plus Video- und Notiz-Hotspots, Analytics- und Priority-Support-Featureflag
+
+Produktbilder sind nur in Business und Pro freigeschaltet. Pro Produkt-Hotspot sind maximal 3 Bilder mit je 3 MB erlaubt.
+
 SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 
 ```text
