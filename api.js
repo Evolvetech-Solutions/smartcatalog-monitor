@@ -128,6 +128,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 });
 app.use(express.json());
 
+app.get("/favicon.ico", (req, res) => {
+  res.sendFile(path.resolve("./favicon.ico"));
+});
 app.use("/uploads", express.static(path.resolve("./uploads")));
 app.get("/viewer/web/viewer.html", (req, res) => {
   res.sendFile(path.resolve("./pdf-viewer/viewer.html"));
