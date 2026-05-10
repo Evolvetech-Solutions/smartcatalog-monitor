@@ -614,7 +614,7 @@
         left: 14px;
         z-index: 31;
         display: grid;
-        grid-template-columns: 1.2fr 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
         gap: 8px;
         padding: 7px;
         border: 1px solid rgba(226, 232, 240, 0.76);
@@ -904,6 +904,7 @@
 
       <div id="mobileTools">
         <button type="button" class="secondary" id="mobileAddBtn">Hinzufügen</button>
+        <button type="button" class="secondary" id="mobileDuplicateBtn">Kopie</button>
         <button type="button" class="secondary" id="mobileDetailsBtn">Details</button>
         <button type="button" class="secondary" id="mobileDeleteBtn">Löschen</button>
       </div>
@@ -991,6 +992,13 @@
           </select>
         </div>
         <div class="row" data-mobile-section="style">
+          <button type="button" class="secondary" id="duplicateBtn">Duplizieren</button>
+          <button type="button" class="secondary" id="saveTemplateBtn">Als Vorlage</button>
+        </div>
+        <div class="row" data-mobile-section="style">
+          <button type="button" class="secondary" id="insertTemplateBtn">Vorlage einfügen</button>
+        </div>
+        <div class="row" data-mobile-section="style">
           <button type="button" class="danger" id="deleteBtn">Löschen</button>
           <button type="button" class="secondary" id="clearBtn">Auswahl aufheben</button>
         </div>
@@ -1011,6 +1019,7 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
+    const TEMPLATE_STORAGE_KEY = "smartcatalog_hotspot_template";
     const TOUCH_DEBUG = ["1", "true", "yes"].includes(String(params.get("touch_debug") || "").toLowerCase());
     if (TOUCH_DEBUG) {
       document.body.classList.add("touch-debug");
@@ -1065,6 +1074,7 @@
       hotspotList: document.getElementById("hotspotList"),
       saveBtn: document.getElementById("saveBtn"),
       mobileAddBtn: document.getElementById("mobileAddBtn"),
+      mobileDuplicateBtn: document.getElementById("mobileDuplicateBtn"),
       mobileDetailsBtn: document.getElementById("mobileDetailsBtn"),
       mobileDeleteBtn: document.getElementById("mobileDeleteBtn"),
       mobileStatusToast: document.getElementById("mobileStatusToast"),
@@ -1085,6 +1095,9 @@
       fillOpacityInput: document.getElementById("fillOpacityInput"),
       fillOpacityValue: document.getElementById("fillOpacityValue"),
       borderWidthInput: document.getElementById("borderWidthInput"),
+      duplicateBtn: document.getElementById("duplicateBtn"),
+      saveTemplateBtn: document.getElementById("saveTemplateBtn"),
+      insertTemplateBtn: document.getElementById("insertTemplateBtn"),
       fields: {
         title: document.querySelector('[data-field="title"]'),
         url: document.querySelector('[data-field="url"]'),
@@ -1233,6 +1246,34 @@
 
     function makeId() {
       return `hotspot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function cloneData(value) {
+      return JSON.parse(JSON.stringify(value || {}));
+    }
+
+    function offsetPosition(position = {}) {
+      const width = Math.max(0.015, Math.min(0.95, Number(position.width) || 0.12));
+      const height = Math.max(0.015, Math.min(0.95, Number(position.height) || 0.08));
+      const offset = 0.025;
+
+      return {
+        left: Math.max(0, Math.min(1 - width, (Number(position.left) || 0) + offset)),
+        top: Math.max(0, Math.min(1 - height, (Number(position.top) || 0) + offset)),
+        width,
+        height
+      };
+    }
+
+    function prepareCopiedHotspot(source, position = null) {
+      const copy = cloneData(source);
+      copy.id = makeId();
+      copy.page = state.currentPage;
+      copy.position = position || offsetPosition(source.position);
+      copy.title = source.title || source.product?.name || "Kopie";
+      copy.label = source.label || copy.title;
+      copy.updated_at = new Date().toISOString();
+      return copy;
     }
 
     function clamp(value) {
@@ -1595,10 +1636,14 @@
         el.fillColorInput,
         el.borderColorInput,
         el.fillOpacityInput,
-        el.borderWidthInput
+        el.borderWidthInput,
+        el.duplicateBtn,
+        el.saveTemplateBtn,
+        el.mobileDuplicateBtn
       ].forEach((input) => {
         input.disabled = disabled;
       });
+      el.insertTemplateBtn.disabled = !localStorage.getItem(TEMPLATE_STORAGE_KEY);
 
       if (!hotspot) {
         updateFieldVisibility("link");
@@ -1748,6 +1793,74 @@
       setStatus(isMobileEditor()
         ? "Hotspot erstellt. Zum Bearbeiten Details öffnen."
         : "Hotspot erstellt. Details rechts bearbeiten.");
+      render();
+    }
+
+    function duplicateSelectedHotspot() {
+      const hotspot = currentHotspot();
+      if (!hotspot) {
+        setStatus("Bitte zuerst einen Hotspot auswählen.");
+        return;
+      }
+
+      syncFormToHotspot();
+      const copy = prepareCopiedHotspot(hotspot);
+      state.hotspots.push(copy);
+      state.selectedId = copy.id;
+      state.dirty = true;
+      setStatus("Hotspot dupliziert.");
+      setMobilePlacing(false);
+      render();
+    }
+
+    function saveSelectedAsTemplate() {
+      const hotspot = currentHotspot();
+      if (!hotspot) {
+        setStatus("Bitte zuerst einen Hotspot auswählen.");
+        return;
+      }
+
+      syncFormToHotspot();
+      const template = cloneData(hotspot);
+      delete template.id;
+      delete template.page;
+      delete template.position;
+      delete template.updated_at;
+
+      localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+      el.insertTemplateBtn.disabled = false;
+      setStatus("Vorlage gespeichert.");
+    }
+
+    function insertTemplateHotspot() {
+      const rawTemplate = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+      if (!rawTemplate) {
+        setStatus("Noch keine Vorlage gespeichert.");
+        return;
+      }
+
+      let template;
+      try {
+        template = JSON.parse(rawTemplate);
+      } catch (error) {
+        localStorage.removeItem(TEMPLATE_STORAGE_KEY);
+        setStatus("Vorlage war beschädigt und wurde entfernt.");
+        return;
+      }
+
+      const hotspot = prepareCopiedHotspot(
+        {
+          ...template,
+          position: defaultRectAt({ x: 0.5, y: 0.5 })
+        },
+        defaultRectAt({ x: 0.5, y: 0.5 })
+      );
+
+      state.hotspots.push(hotspot);
+      state.selectedId = hotspot.id;
+      state.dirty = true;
+      setMobilePlacing(false);
+      setStatus("Vorlage eingefügt.");
       render();
     }
 
@@ -2410,10 +2523,14 @@
       openEditorPanel(false);
       render();
     });
+    el.duplicateBtn.addEventListener("click", duplicateSelectedHotspot);
+    el.saveTemplateBtn.addEventListener("click", saveSelectedAsTemplate);
+    el.insertTemplateBtn.addEventListener("click", insertTemplateHotspot);
     el.saveBtn.addEventListener("click", () => {
       save().catch((error) => setStatus(error.message));
     });
     el.mobileAddBtn.addEventListener("click", createMobileHotspot);
+    el.mobileDuplicateBtn.addEventListener("click", duplicateSelectedHotspot);
     el.mobileDetailsBtn.addEventListener("click", () => {
       if (!state.selectedId) {
         setStatus("Bitte zuerst einen Hotspot auswählen.");
