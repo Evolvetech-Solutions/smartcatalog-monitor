@@ -1803,7 +1803,7 @@
         return;
       }
 
-      syncFormToHotspot();
+      updateSelectedFromForm();
       const copy = prepareCopiedHotspot(hotspot);
       state.hotspots.push(copy);
       state.selectedId = copy.id;
@@ -1820,7 +1820,7 @@
         return;
       }
 
-      syncFormToHotspot();
+      updateSelectedFromForm();
       const template = cloneData(hotspot);
       delete template.id;
       delete template.page;
