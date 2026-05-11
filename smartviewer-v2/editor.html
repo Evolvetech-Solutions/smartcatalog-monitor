@@ -178,6 +178,19 @@
       box-shadow: 0 12px 30px rgba(37, 99, 235, 0.24);
     }
 
+    .hotspot.flash {
+      animation: hotspotPulse 900ms ease-out;
+    }
+
+    @keyframes hotspotPulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.62);
+      }
+      100% {
+        box-shadow: 0 0 0 18px rgba(249, 115, 22, 0);
+      }
+    }
+
     .resizeHandle {
       position: absolute;
       width: 18px;
@@ -903,7 +916,7 @@
       </div>
 
       <div id="mobileTools">
-        <button type="button" class="secondary" id="mobileAddBtn">Hinzufügen</button>
+        <button type="button" class="secondary" id="mobileAddBtn">Neu</button>
         <button type="button" class="secondary" id="mobileDuplicateBtn">Kopie</button>
         <button type="button" class="secondary" id="mobileDetailsBtn">Details</button>
         <button type="button" class="secondary" id="mobileDeleteBtn">Löschen</button>
@@ -1055,6 +1068,8 @@
       mobileFitWidth: 0,
       mobileTab: "content",
       mobilePlacing: false,
+      flashId: "",
+      flashTimer: null,
       dirty: false
     };
 
@@ -1116,6 +1131,29 @@
         el.mobileStatusToast.innerText = message;
         el.mobileStatusToast.classList.toggle("show", Boolean(message));
       }
+    }
+
+    function showHotspotActionFeedback(hotspotId, message, options = {}) {
+      if (!hotspotId) {
+        setStatus(message);
+        return;
+      }
+
+      if (options.closePanel && isMobileEditor()) {
+        openEditorPanel(false);
+      }
+
+      state.flashId = hotspotId;
+      setStatus(message);
+      render();
+
+      window.clearTimeout(state.flashTimer);
+      state.flashTimer = window.setTimeout(() => {
+        if (state.flashId === hotspotId) {
+          state.flashId = "";
+          render();
+        }
+      }, 900);
     }
 
     function updateTouchDebug(label, event, extra = {}) {
@@ -1544,6 +1582,9 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = `hotspot ${hotspot.id === state.selectedId ? "selected" : ""}`;
+        if (hotspot.id === state.flashId) {
+          button.classList.add("flash");
+        }
         if (state.interaction?.id === hotspot.id && state.interaction?.mode === "move") {
           button.classList.add("moving");
         }
@@ -1808,9 +1849,8 @@
       state.hotspots.push(copy);
       state.selectedId = copy.id;
       state.dirty = true;
-      setStatus("Hotspot dupliziert.");
       setMobilePlacing(false);
-      render();
+      showHotspotActionFeedback(copy.id, "Kopie eingefügt.", { closePanel: true });
     }
 
     function saveSelectedAsTemplate() {
@@ -1860,8 +1900,7 @@
       state.selectedId = hotspot.id;
       state.dirty = true;
       setMobilePlacing(false);
-      setStatus("Vorlage eingefügt.");
-      render();
+      showHotspotActionFeedback(hotspot.id, "Vorlage eingefügt.", { closePanel: true });
     }
 
     function beginHotspotMove(event, hotspotId) {
