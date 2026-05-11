@@ -31,6 +31,37 @@
       box-sizing: border-box;
     }
 
+    .supportFab {
+      position: fixed;
+      right: 18px;
+      bottom: calc(18px + env(safe-area-inset-bottom));
+      z-index: 80;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 15px;
+      border-radius: 999px;
+      background: #16a34a;
+      color: #fff;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 800;
+      box-shadow: 0 16px 36px rgba(22, 163, 74, 0.34);
+    }
+
+    .supportFab::before {
+      content: "?";
+      width: 22px;
+      height: 22px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      font-size: 15px;
+      line-height: 1;
+    }
+
     html,
     body {
       height: 100%;
@@ -343,6 +374,19 @@
       .control-button {
         padding: 0 10px;
       }
+
+      .supportFab {
+        right: 12px;
+        bottom: calc(78px + env(safe-area-inset-bottom));
+        width: 48px;
+        min-height: 48px;
+        justify-content: center;
+        padding: 0;
+      }
+
+      .supportFab span {
+        display: none;
+      }
     }
 
     @media (max-width: 520px) {
@@ -368,6 +412,7 @@
 </head>
 
 <body>
+  <a class="supportFab" href="https://wa.me/4915771339574?text=Hallo%20EvolveTech%20Solutions%2C%20ich%20benoetige%20Hilfe%20zu%20MySmartCatalog." target="_blank" rel="noopener noreferrer" aria-label="Support per WhatsApp öffnen"><span>Support</span></a>
   <header id="toolbar">
     <div id="brand">
       <div id="logoWrap">
