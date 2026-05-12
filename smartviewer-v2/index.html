@@ -528,46 +528,66 @@
 
     @media (max-width: 860px) {
       :root {
-        --toolbar-height: 112px;
+        --toolbar-height: 66px;
       }
 
       #toolbar {
-        grid-template-columns: 1fr auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         gap: 8px;
-        padding: 9px 12px;
+        padding: 7px 10px;
       }
 
       #controls {
-        grid-column: 1 / -1;
-        justify-content: center;
-        overflow-x: auto;
-        scrollbar-width: none;
+        grid-column: auto;
+        justify-content: flex-end;
+        gap: 6px;
       }
 
-      #controls::-webkit-scrollbar {
+      #zoomOutBtn,
+      #zoomInBtn,
+      #resetBtn,
+      #hotspotBtn {
         display: none;
       }
 
       #pageInfo {
         min-width: auto;
         justify-self: end;
+        font-size: 13px;
+        white-space: nowrap;
       }
 
       #stage {
-        padding: 14px;
+        padding: 10px;
       }
 
     }
 
     @media (max-width: 520px) {
       button {
-        height: 36px;
+        height: 38px;
+        min-width: 42px;
+        border-radius: 12px;
         font-size: 13px;
       }
 
       #logoWrap {
-        width: 38px;
-        height: 38px;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+      }
+
+      #brand {
+        gap: 8px;
+        min-width: 0;
+      }
+
+      #customerName {
+        font-size: 14px;
+      }
+
+      #catalogTitle {
+        font-size: 12px;
       }
 
       .control-label {
