@@ -558,7 +558,7 @@
       }
 
       #stage {
-        padding: 10px;
+        padding: 6px;
       }
 
       .hotspot::after {
@@ -916,9 +916,11 @@
       spreadEl.style.gap = isMobileLayout() ? "0px" : "1px";
 
       const stageRect = stageEl.getBoundingClientRect();
-      const maxWidth = Math.max(260, stageRect.width - 28);
-      const maxHeight = Math.max(320, stageRect.height - 28);
-      const maxPageWidth = isMobileLayout() ? maxWidth : maxWidth / visible.length;
+      const mobile = isMobileLayout();
+      const fitInset = mobile ? 8 : 28;
+      const maxWidth = Math.max(260, stageRect.width - fitInset);
+      const maxHeight = Math.max(320, stageRect.height - fitInset);
+      const maxPageWidth = mobile ? maxWidth : maxWidth / visible.length;
 
       visible.forEach((pageNumber) => {
         const page = state.pages[pageNumber - 1];
