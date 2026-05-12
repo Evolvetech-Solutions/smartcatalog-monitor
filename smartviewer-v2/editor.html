@@ -199,6 +199,25 @@
       touch-action: none;
     }
 
+    .hotspot::after {
+      content: attr(data-icon);
+      position: absolute;
+      right: -11px;
+      top: -11px;
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--hotspot-icon-color, #2563eb);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1;
+      pointer-events: none;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+    }
+
     .hotspot.selected {
       border-color: #f97316;
       background: rgba(249, 115, 22, 0.16);
@@ -1042,6 +1061,10 @@
               <label for="borderColorInput">Rahmenfarbe</label>
               <input id="borderColorInput" type="color" value="#2563eb" />
             </div>
+            <div>
+              <label for="iconColorInput">Iconfarbe</label>
+              <input id="iconColorInput" type="color" value="#2563eb" />
+            </div>
           </div>
           <label for="fillOpacityInput">Fuell-Transparenz: <span id="fillOpacityValue">12%</span></label>
           <input id="fillOpacityInput" type="range" min="0" max="50" value="12" />
@@ -1156,6 +1179,7 @@
       descriptionInput: document.getElementById("descriptionInput"),
       fillColorInput: document.getElementById("fillColorInput"),
       borderColorInput: document.getElementById("borderColorInput"),
+      iconColorInput: document.getElementById("iconColorInput"),
       fillOpacityInput: document.getElementById("fillOpacityInput"),
       fillOpacityValue: document.getElementById("fillOpacityValue"),
       borderWidthInput: document.getElementById("borderWidthInput"),
@@ -1590,9 +1614,18 @@
       return {
         fill_color: /^#[0-9a-f]{6}$/i.test(style.fill_color) ? style.fill_color : "#2563eb",
         border_color: /^#[0-9a-f]{6}$/i.test(style.border_color) ? style.border_color : "#2563eb",
+        icon_color: /^#[0-9a-f]{6}$/i.test(style.icon_color) ? style.icon_color : "#2563eb",
         fill_opacity: Math.max(0, Math.min(0.5, Number(style.fill_opacity ?? 0.12))),
         border_width: Math.max(1, Math.min(4, Number.parseInt(style.border_width, 10) || 2))
       };
+    }
+
+    function hotspotIconForType(type) {
+      if (type === "product") return "\u{1F6D2}";
+      if (type === "video") return "\u25B6";
+      if (type === "page") return "\u2197";
+      if (type === "note") return "!";
+      return "\u2197";
     }
 
     function applyHotspotStyle(element, style = {}, isSelected = false) {
@@ -1602,6 +1635,7 @@
       element.style.setProperty("--hotspot-fill", hexToRgba(normalized.fill_color, fillOpacity));
       element.style.setProperty("--hotspot-border-color", isSelected ? "#f97316" : normalized.border_color);
       element.style.setProperty("--hotspot-border-width", `${normalized.border_width}px`);
+      element.style.setProperty("--hotspot-icon-color", normalized.icon_color);
     }
 
     function productImages(hotspot) {
@@ -1641,6 +1675,7 @@
         button.style.top = `${hotspot.position.top * 100}%`;
         button.style.width = `${hotspot.position.width * 100}%`;
         button.style.height = `${hotspot.position.height * 100}%`;
+        button.dataset.icon = hotspotIconForType(hotspot.type);
         applyHotspotStyle(button, hotspot.style, hotspot.id === state.selectedId);
         button.title = hotspot.title || hotspot.type;
         button.addEventListener("click", (event) => {
@@ -1725,6 +1760,7 @@
         el.descriptionInput,
         el.fillColorInput,
         el.borderColorInput,
+        el.iconColorInput,
         el.fillOpacityInput,
         el.borderWidthInput,
         el.duplicateBtn,
@@ -1770,6 +1806,7 @@
       const style = normalizeStyle(hotspot?.style || {});
       el.fillColorInput.value = style.fill_color;
       el.borderColorInput.value = style.border_color;
+      el.iconColorInput.value = style.icon_color;
       el.fillOpacityInput.value = String(Math.round(style.fill_opacity * 100));
       el.fillOpacityValue.innerText = `${el.fillOpacityInput.value}%`;
       el.borderWidthInput.value = String(style.border_width);
@@ -1808,6 +1845,7 @@
       hotspot.style = {
         fill_color: el.fillColorInput.value,
         border_color: el.borderColorInput.value,
+        icon_color: el.iconColorInput.value,
         fill_opacity: Number(el.fillOpacityInput.value) / 100,
         border_width: Number(el.borderWidthInput.value) || 2
       };
@@ -2671,6 +2709,7 @@
       el.descriptionInput,
       el.fillColorInput,
       el.borderColorInput,
+      el.iconColorInput,
       el.fillOpacityInput,
       el.borderWidthInput
     ].forEach((input) => input.addEventListener("input", updateSelectedFromForm));
