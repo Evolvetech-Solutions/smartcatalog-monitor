@@ -1120,7 +1120,13 @@
       };
     }
 
+    function isHotspotTarget(target) {
+      return target instanceof Element && Boolean(target.closest(".hotspot"));
+    }
+
     function startGesture(event) {
+      if (event.pointerType === "mouse" && isHotspotTarget(event.target)) return;
+
       state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       stageEl.setPointerCapture?.(event.pointerId);
       state.moved = false;
