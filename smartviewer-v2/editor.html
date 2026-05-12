@@ -218,6 +218,14 @@
       box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
     }
 
+    .hotspot.hotspot-type-product::after {
+      content: "";
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='21' r='1'/%3E%3Ccircle cx='20' cy='21' r='1'/%3E%3Cpath d='M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L22 6H6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 14px 14px;
+    }
+
     .hotspot.selected {
       border-color: #f97316;
       background: rgba(249, 115, 22, 0.16);
@@ -1664,7 +1672,7 @@
       pageHotspots().forEach((hotspot) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `hotspot ${hotspot.id === state.selectedId ? "selected" : ""}`;
+        button.className = `hotspot hotspot-type-${hotspot.type || "link"} ${hotspot.id === state.selectedId ? "selected" : ""}`;
         if (hotspot.id === state.flashId) {
           button.classList.add("flash");
         }

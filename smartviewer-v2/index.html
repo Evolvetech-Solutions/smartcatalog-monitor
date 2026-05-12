@@ -262,6 +262,14 @@
       pointer-events: none;
     }
 
+    .hotspot.hotspot-type-product::after {
+      content: "";
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='21' r='1'/%3E%3Ccircle cx='20' cy='21' r='1'/%3E%3Cpath d='M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L22 6H6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 15px 15px;
+    }
+
     .hotspot-label {
       position: absolute;
       left: 50%;
@@ -569,6 +577,10 @@
         font-size: 12px;
       }
 
+      .hotspot.hotspot-type-product::after {
+        background-size: 12px 12px;
+      }
+
     }
 
     @media (max-width: 520px) {
@@ -817,7 +829,7 @@
         const hotspotTitle = hotspot.product?.name || hotspot.title || hotspot.label || "Klickbarer Bereich";
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "hotspot";
+        button.className = `hotspot hotspot-type-${hotspot.type || "link"}`;
         button.title = hotspotTitle;
         button.setAttribute("aria-label", hotspotTitle);
         button.style.left = `${hotspot.position.left * 100}%`;
