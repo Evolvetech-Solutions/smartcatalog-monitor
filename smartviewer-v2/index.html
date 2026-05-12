@@ -694,7 +694,8 @@
       showHotspots: true,
       lastTapAt: 0,
       lastTapX: 0,
-      lastTapY: 0
+      lastTapY: 0,
+      suppressHotspotClickUntil: 0
     };
 
     if (!catalogId) {
@@ -828,6 +829,7 @@
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           event.preventDefault();
+          if (Date.now() < state.suppressHotspotClickUntil) return;
           document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
             activeHotspot.classList.remove("active");
           });
@@ -1128,6 +1130,7 @@
         state.panX = state.startPanX + dx;
         state.panY = state.startPanY + dy;
         state.moved = true;
+        state.suppressHotspotClickUntil = Date.now() + 420;
         applyTransform();
         event.preventDefault();
         return;
@@ -1138,7 +1141,10 @@
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
 
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) state.moved = true;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        state.moved = true;
+        state.suppressHotspotClickUntil = Date.now() + 420;
+      }
 
       if (state.scale > 1.01) {
         stageEl.classList.add("dragging");
@@ -1174,6 +1180,7 @@
       const fastEnough = elapsed < 1400 || Math.abs(dx) > swipeDistance * 1.65;
 
       if (state.scale <= 1.01 && horizontalSwipe && fastEnough) {
+        state.suppressHotspotClickUntil = Date.now() + 420;
         if (dx < 0) nextPage();
         else prevPage();
       }
@@ -1263,9 +1270,9 @@
     });
     document.getElementById("drawerCloseBtn").addEventListener("click", closeDrawer);
 
-    stageEl.addEventListener("pointerdown", startGesture);
-    stageEl.addEventListener("pointermove", moveGesture);
-    stageEl.addEventListener("pointerup", endGesture);
+    stageEl.addEventListener("pointerdown", startGesture, { capture: true });
+    stageEl.addEventListener("pointermove", moveGesture, { capture: true });
+    stageEl.addEventListener("pointerup", endGesture, { capture: true });
     stageEl.addEventListener("pointercancel", (event) => {
       state.pointers.delete(event.pointerId);
       stageEl.classList.remove("dragging");
