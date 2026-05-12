@@ -217,8 +217,8 @@
 
     .hotspot {
       position: absolute;
-      min-width: 34px;
-      min-height: 34px;
+      min-width: 0;
+      min-height: 0;
       border: var(--hotspot-border-width, 2px) solid var(--hotspot-border-color, rgba(37, 99, 235, 0.74));
       border-radius: 8px;
       background: var(--hotspot-fill, rgba(37, 99, 235, 0.10));
@@ -559,6 +559,14 @@
 
       #stage {
         padding: 10px;
+      }
+
+      .hotspot::after {
+        right: -8px;
+        top: -8px;
+        width: 18px;
+        height: 18px;
+        font-size: 12px;
       }
 
     }
