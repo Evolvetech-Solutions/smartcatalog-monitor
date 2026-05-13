@@ -41,6 +41,7 @@ const HISTORY_FILE = "./history.json";
 const CUSTOMERS_FILE = "./customers.json";
 const REQUESTS_FILE = "./requests.json";
 const CATALOG_HOTSPOTS_FILE = "./catalog-hotspots.json";
+const CATALOG_ANALYTICS_FILE = "./catalog-analytics.json";
 
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
@@ -547,6 +548,235 @@ async function writeCatalogHotspots(catalogId, hotspots) {
   return allHotspots[String(catalogId)];
 }
 
+function dayKey(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function clampNumber(value, min, max, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function compactString(value, maxLength = 120) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function normalizeAnalyticsDevice(device) {
+  const value = String(device || "").toLowerCase();
+  return ["mobile", "tablet", "desktop"].includes(value) ? value : "desktop";
+}
+
+function normalizeAnalyticsEvent(body = {}) {
+  const type = String(body.type || "").toLowerCase();
+  const allowedTypes = new Set(["catalog_view", "hotspot_click", "duration"]);
+
+  if (!allowedTypes.has(type)) return null;
+
+  return {
+    type,
+    device: normalizeAnalyticsDevice(body.device),
+    hotspot_id: compactString(body.hotspot_id, 120),
+    hotspot_type: compactString(body.hotspot_type, 30),
+    hotspot_title: compactString(body.hotspot_title, 160),
+    duration_seconds: Math.round(clampNumber(body.duration_seconds, 0, 1800, 0))
+  };
+}
+
+function createEmptyAnalyticsEntry() {
+  return {
+    views: 0,
+    devices: {
+      mobile: 0,
+      tablet: 0,
+      desktop: 0
+    },
+    total_duration_seconds: 0,
+    duration_events: 0,
+    hotspot_clicks_total: 0,
+    product_clicks: 0,
+    hotspots: {},
+    updated_at: null
+  };
+}
+
+function ensureAnalyticsCatalogEntry(analytics, catalogId) {
+  const today = dayKey();
+  analytics.days ||= {};
+  analytics.days[today] ||= { catalogs: {} };
+  analytics.days[today].catalogs ||= {};
+  analytics.days[today].catalogs[String(catalogId)] ||= createEmptyAnalyticsEntry();
+
+  return analytics.days[today].catalogs[String(catalogId)];
+}
+
+function pruneAnalyticsDays(analytics, maxDays = 400) {
+  const keys = Object.keys(analytics.days || {}).sort();
+  const removeCount = Math.max(0, keys.length - maxDays);
+
+  keys.slice(0, removeCount).forEach((key) => {
+    delete analytics.days[key];
+  });
+}
+
+function hotspotAnalyticsMeta(hotspots, event) {
+  const hotspot = hotspots.find((entry) => String(entry.id || "") === event.hotspot_id);
+  const type = hotspot?.type || event.hotspot_type || "unknown";
+  const title =
+    hotspot?.product?.name ||
+    hotspot?.title ||
+    hotspot?.label ||
+    event.hotspot_title ||
+    "Hotspot";
+
+  return {
+    id: event.hotspot_id,
+    type: compactString(type, 30),
+    title: compactString(title, 160)
+  };
+}
+
+async function recordCatalogAnalyticsEvent(catalogId, event) {
+  const analytics = await readJsonFile(CATALOG_ANALYTICS_FILE, { days: {} });
+  const entry = ensureAnalyticsCatalogEntry(analytics, catalogId);
+  entry.devices ||= { mobile: 0, tablet: 0, desktop: 0 };
+  entry.hotspots ||= {};
+
+  if (event.type === "catalog_view") {
+    entry.views += 1;
+    entry.devices[event.device] = (entry.devices[event.device] || 0) + 1;
+  }
+
+  if (event.type === "duration" && event.duration_seconds > 0) {
+    entry.total_duration_seconds += event.duration_seconds;
+    entry.duration_events += 1;
+  }
+
+  if (event.type === "hotspot_click" && event.hotspot_id) {
+    const hotspots = await readCatalogHotspots(catalogId);
+    const meta = hotspotAnalyticsMeta(hotspots, event);
+    entry.hotspot_clicks_total += 1;
+    if (meta.type === "product") entry.product_clicks += 1;
+    entry.hotspots[meta.id] ||= {
+      id: meta.id,
+      type: meta.type,
+      title: meta.title,
+      clicks: 0
+    };
+    entry.hotspots[meta.id].type = meta.type;
+    entry.hotspots[meta.id].title = meta.title;
+    entry.hotspots[meta.id].clicks += 1;
+  }
+
+  entry.updated_at = new Date().toISOString();
+  pruneAnalyticsDays(analytics);
+  await writeJsonFile(CATALOG_ANALYTICS_FILE, analytics);
+}
+
+function createAnalyticsSummary() {
+  return {
+    views: 0,
+    mobile_views: 0,
+    tablet_views: 0,
+    desktop_views: 0,
+    total_duration_seconds: 0,
+    average_duration_seconds: 0,
+    duration_events: 0,
+    hotspot_clicks_total: 0,
+    product_clicks: 0
+  };
+}
+
+function addAnalyticsEntryToSummary(summary, entry = {}) {
+  summary.views += Number(entry.views) || 0;
+  summary.mobile_views += Number(entry.devices?.mobile) || 0;
+  summary.tablet_views += Number(entry.devices?.tablet) || 0;
+  summary.desktop_views += Number(entry.devices?.desktop) || 0;
+  summary.total_duration_seconds += Number(entry.total_duration_seconds) || 0;
+  summary.duration_events += Number(entry.duration_events) || 0;
+  summary.hotspot_clicks_total += Number(entry.hotspot_clicks_total) || 0;
+  summary.product_clicks += Number(entry.product_clicks) || 0;
+  summary.average_duration_seconds = summary.views
+    ? Math.round(summary.total_duration_seconds / summary.views)
+    : 0;
+}
+
+function mergeAnalyticsSummary(summary, source = {}) {
+  summary.views += Number(source.views) || 0;
+  summary.mobile_views += Number(source.mobile_views) || 0;
+  summary.tablet_views += Number(source.tablet_views) || 0;
+  summary.desktop_views += Number(source.desktop_views) || 0;
+  summary.total_duration_seconds += Number(source.total_duration_seconds) || 0;
+  summary.duration_events += Number(source.duration_events) || 0;
+  summary.hotspot_clicks_total += Number(source.hotspot_clicks_total) || 0;
+  summary.product_clicks += Number(source.product_clicks) || 0;
+  summary.average_duration_seconds = summary.views
+    ? Math.round(summary.total_duration_seconds / summary.views)
+    : 0;
+}
+
+function normalizeAnalyticsDaysParam(value) {
+  return Math.round(clampNumber(value, 1, 365, 30));
+}
+
+function analyticsStartKey(days) {
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return dayKey(start);
+}
+
+function buildCatalogAnalyticsReport(analytics, catalog, days) {
+  const catalogId = String(catalog.catalog_id || "");
+  const startKey = analyticsStartKey(days);
+  const summary = createAnalyticsSummary();
+  const daily = [];
+  const hotspots = {};
+
+  Object.entries(analytics.days || {})
+    .filter(([date]) => date >= startKey)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([date, day]) => {
+      const entry = day?.catalogs?.[catalogId];
+      const daySummary = createAnalyticsSummary();
+
+      if (entry) {
+        addAnalyticsEntryToSummary(summary, entry);
+        addAnalyticsEntryToSummary(daySummary, entry);
+        Object.values(entry.hotspots || {}).forEach((hotspot) => {
+          if (!hotspot?.id) return;
+          hotspots[hotspot.id] ||= {
+            hotspot_id: hotspot.id,
+            type: hotspot.type || "unknown",
+            title: hotspot.title || "Hotspot",
+            clicks: 0
+          };
+          hotspots[hotspot.id].type = hotspot.type || hotspots[hotspot.id].type;
+          hotspots[hotspot.id].title = hotspot.title || hotspots[hotspot.id].title;
+          hotspots[hotspot.id].clicks += Number(hotspot.clicks) || 0;
+        });
+      }
+
+      daily.push({
+        date,
+        ...daySummary
+      });
+    });
+
+  const topHotspots = Object.values(hotspots)
+    .sort((a, b) => b.clicks - a.clicks)
+    .slice(0, 20);
+
+  return {
+    catalog_id: catalogId,
+    id: catalog.id,
+    title: catalog.title || catalog.name || "",
+    period_days: days,
+    summary,
+    daily,
+    top_hotspots: topHotspots
+  };
+}
+
 async function getCatalogPages(catalogId) {
   const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
   const files = await fs.readdir(outputDir).catch(() => []);
@@ -653,11 +883,39 @@ function countCustomerCatalogs(urls, customerNumber) {
   return urls.filter((item) => item.customer_number === customerNumber).length;
 }
 
+function getCustomerAnalyticsAccess(customer) {
+  const planConfig = getPlanConfig(customer?.plan);
+  const subscriptionStatus = customer?.subscription_status || "none";
+
+  return Boolean(
+    customer &&
+    customer.is_active !== false &&
+    isSubscriptionActive(subscriptionStatus) &&
+    planConfig?.features?.analytics
+  );
+}
+
 async function findCustomerByNumber(customerNumber) {
   const customers = await readJsonFile(CUSTOMERS_FILE, []);
   return customers.find(
     (entry) => entry.customer_number === String(customerNumber)
   ) || null;
+}
+
+async function findCatalogAndCustomerByCatalogId(catalogId) {
+  const urls = await readJsonFile(URLS_FILE, []);
+  const customers = await readJsonFile(CUSTOMERS_FILE, []);
+  const catalog = urls.find((item) => String(item.catalog_id || "") === String(catalogId || ""));
+
+  if (!catalog) {
+    return { catalog: null, customer: null };
+  }
+
+  const customer = customers.find(
+    (entry) => entry.customer_number === catalog.customer_number
+  ) || null;
+
+  return { catalog, customer };
 }
 
 function validateHotspotsForPlan(hotspots, planConfig) {
@@ -1284,10 +1542,33 @@ app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
       pinch_zoom: true,
       pan_when_zoomed: true,
       hotspots: true,
+      analytics: getCustomerAnalyticsAccess(customer),
       plan: customer?.plan || "free",
       plan_features: buildPlanFeatures(planConfig)
     }
   });
+});
+
+app.post("/api/smartviewer-v2/catalogs/:catalogId/analytics", async (req, res, next) => {
+  try {
+    const catalogId = String(req.params.catalogId || "").trim();
+    const event = normalizeAnalyticsEvent(req.body || {});
+
+    if (!catalogId || !event) {
+      return res.status(204).end();
+    }
+
+    const { catalog, customer } = await findCatalogAndCustomerByCatalogId(catalogId);
+
+    if (!catalog || !getCustomerAnalyticsAccess(customer)) {
+      return res.status(204).end();
+    }
+
+    await recordCatalogAnalyticsEvent(catalogId, event);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/upload", adminAuth, upload.any(), async (req, res) => {
@@ -2036,6 +2317,37 @@ app.get("/api/customer/catalogs", customerAuth, async (req, res) => {
   res.json(customerUrls.map((item) => buildStatusEntry(item, states, history)));
 });
 
+app.get("/api/customer/analytics", customerAuth, async (req, res) => {
+  const customer = await findCustomerByNumber(req.customer.customer_number);
+
+  if (!getCustomerAnalyticsAccess(customer)) {
+    return res.status(403).json({
+      error: "Analytics ist im aktuellen Abo nicht enthalten.",
+      code: "ANALYTICS_NOT_INCLUDED",
+      upgrade_required: true
+    });
+  }
+
+  const days = normalizeAnalyticsDaysParam(req.query.days);
+  const urls = await readJsonFile(URLS_FILE, []);
+  const analytics = await readJsonFile(CATALOG_ANALYTICS_FILE, { days: {} });
+  const customerCatalogs = urls.filter(
+    (item) => item.customer_number === req.customer.customer_number && item.catalog_id
+  );
+  const catalogs = customerCatalogs.map((catalog) =>
+    buildCatalogAnalyticsReport(analytics, catalog, days)
+  );
+  const summary = createAnalyticsSummary();
+  catalogs.forEach((catalog) => mergeAnalyticsSummary(summary, catalog.summary));
+
+  res.json({
+    enabled: true,
+    period_days: days,
+    summary,
+    catalogs
+  });
+});
+
 app.post("/api/customer/upload", customerAuth, requireCatalogCreationEntitlement, upload.any(), async (req, res) => {
   try {
     const catalogFile = await getCatalogUploadFile(req);
@@ -2275,6 +2587,40 @@ app.post("/api/customer/catalogs/:id/editor-session", customerAuth, async (req, 
     editor_url: editorUrl,
     editor_token: editorToken,
     expires_in_seconds: 7200
+  });
+});
+
+app.get("/api/customer/catalogs/:id/analytics", customerAuth, async (req, res) => {
+  const catalog = await findCustomerCatalogById(
+    req.customer.customer_number,
+    req.params.id
+  );
+
+  if (!catalog) {
+    return res.status(404).json({ error: "Katalog nicht gefunden" });
+  }
+
+  if (!catalog.catalog_id) {
+    return res.status(400).json({ error: "Katalog hat keine catalog_id" });
+  }
+
+  const customer = await findCustomerByNumber(req.customer.customer_number);
+
+  if (!getCustomerAnalyticsAccess(customer)) {
+    return res.status(403).json({
+      error: "Analytics ist im aktuellen Abo nicht enthalten.",
+      code: "ANALYTICS_NOT_INCLUDED",
+      upgrade_required: true
+    });
+  }
+
+  const days = normalizeAnalyticsDaysParam(req.query.days);
+  const analytics = await readJsonFile(CATALOG_ANALYTICS_FILE, { days: {} });
+  const report = buildCatalogAnalyticsReport(analytics, catalog, days);
+
+  res.json({
+    enabled: true,
+    ...report
   });
 });
 

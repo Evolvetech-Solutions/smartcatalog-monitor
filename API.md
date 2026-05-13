@@ -521,6 +521,92 @@ Die erlaubten Typen haengen vom aktiven Abo ab: Starter darf `link` und `page`, 
 
 Mit `show_icon: false` kann das typbasierte Symbol am Hotspot ausgeblendet werden. Fehlt das Feld, wird das Symbol angezeigt.
 
+### SmartViewer Analytics
+
+Analytics V1 ist bewusst cookielos und aggregiert. Die oeffentliche Viewer-Seite sendet nur fuer Pro-Kataloge grobe Ereignisse an die eigene API:
+
+```http
+POST /api/smartviewer-v2/catalogs/:catalogId/analytics
+Content-Type: application/json
+```
+
+Beispiele:
+
+```json
+{
+  "type": "catalog_view",
+  "device": "desktop"
+}
+```
+
+```json
+{
+  "type": "hotspot_click",
+  "device": "mobile",
+  "hotspot_id": "hotspot-123",
+  "hotspot_type": "product",
+  "hotspot_title": "Produktname"
+}
+```
+
+```json
+{
+  "type": "duration",
+  "device": "desktop",
+  "duration_seconds": 42
+}
+```
+
+Die API speichert keine IP-Adresse, keine Cookies, keine Besucher-ID, keinen User-Agent-Rohwert und keine Fingerprints. Gespeichert werden Tagesaggregate in `catalog-analytics.json`.
+
+Kunden koennen Analytics fuer alle eigenen Kataloge abrufen:
+
+```http
+GET /api/customer/analytics?days=30
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Oder fuer einen einzelnen Katalog:
+
+```http
+GET /api/customer/catalogs/:id/analytics?days=30
+Authorization: Bearer <CUSTOMER_JWT>
+```
+
+Antwort fuer einen Katalog:
+
+```json
+{
+  "enabled": true,
+  "catalog_id": "1777318518555",
+  "id": 1777318518555,
+  "title": "Katalogname",
+  "period_days": 30,
+  "summary": {
+    "views": 128,
+    "mobile_views": 91,
+    "tablet_views": 0,
+    "desktop_views": 37,
+    "total_duration_seconds": 6420,
+    "average_duration_seconds": 50,
+    "duration_events": 120,
+    "hotspot_clicks_total": 28,
+    "product_clicks": 18
+  },
+  "daily": [],
+  "top_hotspots": [
+    {
+      "hotspot_id": "hotspot-123",
+      "type": "product",
+      "title": "Produktname",
+      "clicks": 18
+    }
+  ]
+}
+```
+
+Analytics ist aktuell nur im Pro-Featureflag enthalten. Andere Tarife erhalten `ANALYTICS_NOT_INCLUDED`.
+
 Produktbilder koennen direkt am Produkt-Hotspot hochgeladen werden. Pro Hotspot sind maximal 3 Bilder erlaubt, je Bild maximal 3 MB. Erlaubte Formate: JPG, PNG, WEBP und GIF.
 
 Produktbild-Uploads sind nur in Business und Pro erlaubt. Starter erhaelt `PRODUCT_IMAGES_NOT_INCLUDED`.
