@@ -270,6 +270,11 @@
       background-size: 15px 15px;
     }
 
+    .hotspot.icon-hidden::after {
+      content: none;
+      display: none;
+    }
+
     .hotspot-label {
       position: absolute;
       left: 50%;
@@ -830,6 +835,7 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = `hotspot hotspot-type-${hotspot.type || "link"}`;
+        button.classList.toggle("icon-hidden", hotspot.show_icon === false);
         button.title = hotspotTitle;
         button.setAttribute("aria-label", hotspotTitle);
         button.style.left = `${hotspot.position.left * 100}%`;
