@@ -438,6 +438,23 @@
       visibility: hidden;
     }
 
+    #drawerBackdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 55;
+      border: 0;
+      background: rgba(15, 23, 42, 0.46);
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 180ms ease, visibility 180ms ease;
+    }
+
+    #drawerBackdrop.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
     #drawer.open {
       visibility: visible;
       transform: translate(-50%, 0);
@@ -537,6 +554,64 @@
     .link-note {
       color: var(--muted);
       font-size: 13px;
+    }
+
+    @media (min-width: 861px) {
+      #drawer {
+        top: 50%;
+        bottom: auto;
+        width: min(720px, calc(100vw - 96px));
+        max-height: min(720px, calc(100vh - 120px));
+        padding: 28px;
+        border-radius: 18px;
+        transform: translate(-50%, -44%);
+        opacity: 0;
+        transition: transform 180ms ease, opacity 180ms ease, visibility 180ms ease;
+      }
+
+      #drawer.open {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+      }
+
+      #drawerTitle {
+        font-size: 24px;
+      }
+
+      #drawerBody {
+        font-size: 16px;
+      }
+
+      #drawerActions {
+        margin-top: 20px;
+      }
+
+      #drawerActions a,
+      #drawerActions button {
+        min-height: 44px;
+        padding: 0 18px;
+        font-size: 15px;
+      }
+
+      .product-card {
+        gap: 18px;
+      }
+
+      .product-images {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+
+      .product-image {
+        height: 240px;
+      }
+
+      .product-images:has(.product-image:only-child) .product-image {
+        height: 320px;
+      }
+
+      .product-price {
+        font-size: 26px;
+      }
     }
 
     @media (max-width: 860px) {
@@ -660,7 +735,8 @@
     </div>
   </main>
 
-  <aside id="drawer" aria-live="polite">
+  <button id="drawerBackdrop" type="button" aria-label="Dialog schliessen"></button>
+  <aside id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-live="polite">
     <div id="drawerHeader">
       <h2 id="drawerTitle"></h2>
       <button class="icon-button secondary-button" type="button" id="drawerCloseBtn">×</button>
@@ -688,10 +764,12 @@
     const loadingLogoWrapEl = document.getElementById("loadingLogoWrap");
     const loadingLogoEl = document.getElementById("loadingLogo");
     const progressBarEl = document.getElementById("progressBar");
+    const drawerBackdropEl = document.getElementById("drawerBackdrop");
     const drawerEl = document.getElementById("drawer");
     const drawerTitleEl = document.getElementById("drawerTitle");
     const drawerBodyEl = document.getElementById("drawerBody");
     const drawerActionsEl = document.getElementById("drawerActions");
+    const drawerCloseBtn = document.getElementById("drawerCloseBtn");
 
     const state = {
       catalog: null,
@@ -1049,7 +1127,13 @@
         if (hotspot.url) addDrawerLink(hotspot.url, "Link öffnen", hotspot.target);
       }
 
+      openDrawer();
+    }
+
+    function openDrawer() {
+      drawerBackdropEl.classList.add("open");
       drawerEl.classList.add("open");
+      drawerCloseBtn.focus({ preventScroll: true });
     }
 
     function getProductImages(hotspot) {
@@ -1092,6 +1176,7 @@
     }
 
     function closeDrawer() {
+      drawerBackdropEl.classList.remove("open");
       drawerEl.classList.remove("open");
       document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
         activeHotspot.classList.remove("active");
@@ -1313,7 +1398,8 @@
       state.showHotspots = !state.showHotspots;
       viewerEl.classList.toggle("hotspots-visible", state.showHotspots);
     });
-    document.getElementById("drawerCloseBtn").addEventListener("click", closeDrawer);
+    drawerCloseBtn.addEventListener("click", closeDrawer);
+    drawerBackdropEl.addEventListener("click", closeDrawer);
 
     stageEl.addEventListener("pointerdown", startGesture, { capture: true });
     stageEl.addEventListener("pointermove", moveGesture, { capture: true });
@@ -1335,12 +1421,16 @@
     });
 
     document.addEventListener("keydown", (event) => {
+      if (drawerEl.classList.contains("open")) {
+        if (event.key === "Escape") closeDrawer();
+        return;
+      }
+
       if (event.key === "ArrowRight") nextPage();
       if (event.key === "ArrowLeft") prevPage();
       if (event.key === "+") document.getElementById("zoomInBtn").click();
       if (event.key === "-") document.getElementById("zoomOutBtn").click();
       if (event.key === "0") resetZoom();
-      if (event.key === "Escape") closeDrawer();
     });
 
     start();
