@@ -448,11 +448,19 @@ Antwort:
       "type": "link",
       "page": 1,
       "title": "Angebot ansehen",
+      "show_icon": true,
       "position": {
         "left": 0.12,
         "top": 0.34,
         "width": 0.2,
         "height": 0.14
+      },
+      "style": {
+        "fill_color": "#2563eb",
+        "border_color": "#2563eb",
+        "icon_color": "#2563eb",
+        "fill_opacity": 0.12,
+        "border_width": 2
       },
       "url": "https://example.com",
       "target": "_blank"
@@ -480,6 +488,7 @@ PUT-Body:
       "type": "product",
       "page": 2,
       "title": "Produkt",
+      "show_icon": false,
       "position": {
         "left": 0.1,
         "top": 0.2,
@@ -509,6 +518,8 @@ Unterstuetzte Hotspot-Typen:
 - `note`: reine Info
 
 Die erlaubten Typen haengen vom aktiven Abo ab: Starter darf `link` und `page`, Business darf zusaetzlich `product`, Pro darf alle Typen. Nicht freigeschaltete Typen werden beim Speichern mit `HOTSPOT_FEATURE_NOT_INCLUDED` abgelehnt.
+
+Mit `show_icon: false` kann das typbasierte Symbol am Hotspot ausgeblendet werden. Fehlt das Feld, wird das Symbol angezeigt.
 
 Produktbilder koennen direkt am Produkt-Hotspot hochgeladen werden. Pro Hotspot sind maximal 3 Bilder erlaubt, je Bild maximal 3 MB. Erlaubte Formate: JPG, PNG, WEBP und GIF.
 

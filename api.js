@@ -465,6 +465,7 @@ function normalizeHotspotStyle(style = {}) {
   return {
     fill_color: isHexColor(style.fill_color) ? String(style.fill_color).trim() : "#2563eb",
     border_color: isHexColor(style.border_color) ? String(style.border_color).trim() : "#2563eb",
+    icon_color: isHexColor(style.icon_color) ? String(style.icon_color).trim() : "#2563eb",
     fill_opacity: Number(fillOpacity.toFixed(2)),
     border_width: Math.max(1, Math.min(4, Number.parseInt(style.border_width, 10) || 2))
   };

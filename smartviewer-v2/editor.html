@@ -226,6 +226,11 @@
       background-size: 14px 14px;
     }
 
+    .hotspot.icon-hidden::after {
+      content: none;
+      display: none;
+    }
+
     .hotspot.selected {
       border-color: #f97316;
       background: rgba(249, 115, 22, 0.16);
@@ -298,6 +303,25 @@
 
     input[type="range"] {
       padding: 0;
+    }
+
+    .checkboxControl {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .checkboxControl input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--brand);
     }
 
     .draft {
@@ -1076,6 +1100,10 @@
           </div>
           <label for="fillOpacityInput">Fuell-Transparenz: <span id="fillOpacityValue">12%</span></label>
           <input id="fillOpacityInput" type="range" min="0" max="50" value="12" />
+          <label class="checkboxControl" for="showIconInput">
+            <input id="showIconInput" type="checkbox" checked />
+            Symbol anzeigen
+          </label>
           <label for="borderWidthInput">Rahmenstaerke</label>
           <select id="borderWidthInput">
             <option value="1">Fein</option>
@@ -1190,6 +1218,7 @@
       iconColorInput: document.getElementById("iconColorInput"),
       fillOpacityInput: document.getElementById("fillOpacityInput"),
       fillOpacityValue: document.getElementById("fillOpacityValue"),
+      showIconInput: document.getElementById("showIconInput"),
       borderWidthInput: document.getElementById("borderWidthInput"),
       duplicateBtn: document.getElementById("duplicateBtn"),
       saveTemplateBtn: document.getElementById("saveTemplateBtn"),
@@ -1636,6 +1665,10 @@
       return "\u2197";
     }
 
+    function shouldShowHotspotIcon(hotspot) {
+      return hotspot?.show_icon !== false;
+    }
+
     function applyHotspotStyle(element, style = {}, isSelected = false) {
       const normalized = normalizeStyle(style);
       const fillOpacity = isSelected ? Math.min(0.5, normalized.fill_opacity + 0.08) : normalized.fill_opacity;
@@ -1683,7 +1716,9 @@
         button.style.top = `${hotspot.position.top * 100}%`;
         button.style.width = `${hotspot.position.width * 100}%`;
         button.style.height = `${hotspot.position.height * 100}%`;
+        button.dataset.hotspotId = hotspot.id;
         button.dataset.icon = hotspotIconForType(hotspot.type);
+        button.classList.toggle("icon-hidden", !shouldShowHotspotIcon(hotspot));
         applyHotspotStyle(button, hotspot.style, hotspot.id === state.selectedId);
         button.title = hotspot.title || hotspot.type;
         button.addEventListener("click", (event) => {
@@ -1770,6 +1805,7 @@
         el.borderColorInput,
         el.iconColorInput,
         el.fillOpacityInput,
+        el.showIconInput,
         el.borderWidthInput,
         el.duplicateBtn,
         el.saveTemplateBtn,
@@ -1791,6 +1827,7 @@
         el.priceInput.value = "";
         el.descriptionInput.value = "";
         fillStyleForm();
+        el.showIconInput.checked = true;
         return;
       }
 
@@ -1808,6 +1845,21 @@
         ? hotspot.description || ""
         : hotspot.product?.description || "";
       fillStyleForm(hotspot);
+      el.showIconInput.checked = shouldShowHotspotIcon(hotspot);
+    }
+
+    function updateHotspotPreview(hotspot) {
+      const button = Array.from(el.pageCanvas.querySelectorAll(".hotspot"))
+        .find((node) => node.dataset.hotspotId === hotspot.id);
+      if (!button) return;
+
+      ["link", "product", "page", "video", "note"].forEach((type) => {
+        button.classList.toggle(`hotspot-type-${type}`, hotspot.type === type);
+      });
+      button.dataset.icon = hotspotIconForType(hotspot.type);
+      button.classList.toggle("icon-hidden", !shouldShowHotspotIcon(hotspot));
+      applyHotspotStyle(button, hotspot.style, hotspot.id === state.selectedId);
+      button.title = hotspot.title || hotspot.type;
     }
 
     function fillStyleForm(hotspot = null) {
@@ -1857,6 +1909,7 @@
         fill_opacity: Number(el.fillOpacityInput.value) / 100,
         border_width: Number(el.borderWidthInput.value) || 2
       };
+      hotspot.show_icon = el.showIconInput.checked;
       el.fillOpacityValue.innerText = `${el.fillOpacityInput.value}%`;
 
       delete hotspot.url;
@@ -1899,6 +1952,7 @@
       }
 
       el.imageUploadInput.disabled = hotspot.type !== "product" || !canSave();
+      updateHotspotPreview(hotspot);
       renderProductImages(hotspot);
       state.dirty = true;
       renderList();
@@ -2719,6 +2773,7 @@
       el.borderColorInput,
       el.iconColorInput,
       el.fillOpacityInput,
+      el.showIconInput,
       el.borderWidthInput
     ].forEach((input) => input.addEventListener("input", updateSelectedFromForm));
     el.imageUploadInput.addEventListener("change", () => {
