@@ -160,6 +160,24 @@
       background: var(--surface);
     }
 
+    #zoomControls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    #zoomControls button {
+      min-width: 38px;
+      min-height: 38px;
+      padding: 0 10px;
+    }
+
+    #zoomResetBtn {
+      min-width: 64px;
+      font-weight: 800;
+    }
+
     #pageCanvasWrap {
       min-height: 0;
       overflow: auto;
@@ -174,9 +192,14 @@
         #dfe5ee;
     }
 
+    #pageCanvasWrap.zoomed {
+      justify-content: flex-start;
+    }
+
     #pageCanvas {
       position: relative;
-      width: min(100%, 780px);
+      width: var(--desktop-canvas-width, min(100%, 780px));
+      flex: 0 0 auto;
       background: #fff;
       box-shadow: var(--shadow);
       touch-action: none;
@@ -681,6 +704,10 @@
         display: none;
       }
 
+      #zoomControls {
+        display: none;
+      }
+
       input,
       select,
       textarea {
@@ -1012,6 +1039,11 @@
         <select id="pageSelect"></select>
         <button type="button" class="secondary" id="prevPageBtn">←</button>
         <button type="button" class="secondary" id="nextPageBtn">→</button>
+        <div id="zoomControls" aria-label="Zoom">
+          <button type="button" class="secondary" id="zoomOutBtn" title="Zoom kleiner" aria-label="Zoom kleiner">-</button>
+          <button type="button" class="secondary" id="zoomResetBtn" title="Zoom zuruecksetzen" aria-label="Zoom zuruecksetzen"><span id="zoomValue">100%</span></button>
+          <button type="button" class="secondary" id="zoomInBtn" title="Zoom groesser" aria-label="Zoom groesser">+</button>
+        </div>
         <p class="hint">Zum Erstellen eines Hotspots auf der Seite ziehen.</p>
       </div>
 
@@ -1174,6 +1206,7 @@
       ignoreSheetClick: false,
       zoom: 1,
       mobileFitWidth: 0,
+      desktopFitWidth: 0,
       mobileTab: "content",
       mobilePlacing: false,
       flashId: "",
@@ -1187,6 +1220,10 @@
       pageCanvasWrap: document.getElementById("pageCanvasWrap"),
       pageCanvas: document.getElementById("pageCanvas"),
       pageImage: document.getElementById("pageImage"),
+      zoomOutBtn: document.getElementById("zoomOutBtn"),
+      zoomResetBtn: document.getElementById("zoomResetBtn"),
+      zoomInBtn: document.getElementById("zoomInBtn"),
+      zoomValue: document.getElementById("zoomValue"),
       editorPanel: document.getElementById("editorPanel"),
       mobileSheetHandle: document.getElementById("mobileSheetHandle"),
       mobileCollapseBtn: document.getElementById("mobileCollapseBtn"),
@@ -1543,8 +1580,45 @@
       return state.mobileFitWidth;
     }
 
+    function updateDesktopFitWidth() {
+      if (isMobileEditor() || !el.pageCanvasWrap) {
+        state.desktopFitWidth = 0;
+        return 0;
+      }
+
+      const wrapStyle = getComputedStyle(el.pageCanvasWrap);
+      const paddingX = parseFloat(wrapStyle.paddingLeft) + parseFloat(wrapStyle.paddingRight);
+      const availableWidth = Math.max(220, el.pageCanvasWrap.clientWidth - paddingX);
+      state.desktopFitWidth = Math.max(220, Math.min(780, availableWidth));
+      return state.desktopFitWidth;
+    }
+
+    function maxEditorZoom() {
+      return isMobileEditor() ? 4 : 4;
+    }
+
+    function updateZoomControls() {
+      if (!el.zoomValue) return;
+
+      const maxZoom = maxEditorZoom();
+      el.zoomValue.innerText = `${Math.round(state.zoom * 100)}%`;
+      el.zoomOutBtn.disabled = state.zoom <= 1.01;
+      el.zoomResetBtn.disabled = state.zoom <= 1.01;
+      el.zoomInBtn.disabled = state.zoom >= maxZoom - 0.01;
+    }
+
+    function canvasWrapCenterAnchor() {
+      const rect = el.pageCanvasWrap?.getBoundingClientRect();
+      if (!rect) return null;
+
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }
+
     function setEditorZoom(value, anchor = null) {
-      const maxZoom = isMobileEditor() ? 4 : 2.5;
+      const maxZoom = maxEditorZoom();
       const nextZoom = Math.max(1, Math.min(maxZoom, Number(value) || 1));
       const previousZoom = state.zoom;
       const wrapRect = el.pageCanvasWrap?.getBoundingClientRect();
@@ -1558,13 +1632,20 @@
         const fitWidth = state.mobileFitWidth || updateMobileFitWidth();
         const canvasWidth = fitWidth ? `${Math.round(fitWidth * nextZoom)}px` : `${Math.round(nextZoom * 100)}%`;
         el.pageCanvas.style.setProperty("--mobile-canvas-width", canvasWidth);
+        el.pageCanvas.style.removeProperty("--desktop-canvas-width");
+        state.desktopFitWidth = 0;
       } else {
         el.pageCanvas.style.removeProperty("--mobile-canvas-width");
         state.mobileFitWidth = 0;
+        const fitWidth = updateDesktopFitWidth();
+        const canvasWidth = fitWidth ? `${Math.round(fitWidth * nextZoom)}px` : "min(100%, 780px)";
+        el.pageCanvas.style.setProperty("--desktop-canvas-width", canvasWidth);
       }
 
       el.pageCanvasWrap?.classList.toggle("zoomed", nextZoom > 1.01);
-      if (isMobileEditor() && el.pageCanvasWrap && previousZoom > 0 && Math.abs(previousZoom - nextZoom) > 0.01) {
+      updateZoomControls();
+
+      if (el.pageCanvasWrap && previousZoom > 0 && Math.abs(previousZoom - nextZoom) > 0.01) {
         requestAnimationFrame(() => {
           const ratio = nextZoom / previousZoom;
           if (anchorX !== null && anchorY !== null && wrapRect) {
@@ -1578,8 +1659,8 @@
       }
     }
 
-    function zoomBy(delta) {
-      setEditorZoom(state.zoom + delta);
+    function zoomBy(delta, anchor = null) {
+      setEditorZoom(state.zoom + delta, anchor || canvasWrapCenterAnchor());
     }
 
     function moveRect(rect, dx, dy) {
@@ -2675,6 +2756,14 @@
       state.interaction = null;
       render();
     });
+
+    el.pageCanvasWrap.addEventListener("wheel", (event) => {
+      if (isMobileEditor() || (!event.ctrlKey && !event.metaKey)) return;
+
+      event.preventDefault();
+      zoomBy(event.deltaY < 0 ? 0.25 : -0.25, { x: event.clientX, y: event.clientY });
+    }, { passive: false });
+
     document.addEventListener("touchstart", beginMobileTouchGesture, { capture: true, passive: false });
     document.addEventListener("touchmove", moveMobileTouchGesture, { capture: true, passive: false });
     document.addEventListener("touchend", endMobileTouchGesture, { capture: true, passive: false });
@@ -2705,6 +2794,9 @@
       state.selectedId = "";
       render();
     });
+    el.zoomOutBtn.addEventListener("click", () => zoomBy(-0.25));
+    el.zoomResetBtn.addEventListener("click", () => setEditorZoom(1, canvasWrapCenterAnchor()));
+    el.zoomInBtn.addEventListener("click", () => zoomBy(0.25));
     document.getElementById("deleteBtn").addEventListener("click", deleteSelected);
     document.getElementById("clearBtn").addEventListener("click", () => {
       state.selectedId = "";
@@ -2759,7 +2851,21 @@
     });
     window.addEventListener("resize", () => {
       updateMobileFitWidth();
-      setEditorZoom(isMobileEditor() ? state.zoom : 1);
+      setEditorZoom(state.zoom);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (isMobileEditor() || (!event.ctrlKey && !event.metaKey)) return;
+
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        zoomBy(0.25);
+      } else if (event.key === "-") {
+        event.preventDefault();
+        zoomBy(-0.25);
+      } else if (event.key === "0") {
+        event.preventDefault();
+        setEditorZoom(1, canvasWrapCenterAnchor());
+      }
     });
     [
       el.typeInput,
