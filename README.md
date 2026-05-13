@@ -119,6 +119,8 @@ Ein erster Editor ist unter `/smartviewer-v2/editor.html?catalog=<catalog_id>&id
 
 Produkt-Hotspots unterstuetzen bis zu 3 Produktbilder. Uploads laufen im Editor ueber `POST /api/smartviewer-v2/editor/catalogs/:catalogId/hotspots/:hotspotId/images`, maximal 3 MB pro Bild.
 
+SmartViewer V2 erfasst fuer Pro-Kataloge cookielose Tagesaggregate ueber `/api/smartviewer-v2/catalogs/:catalogId/analytics`. Gespeichert werden nur grobe Kennzahlen wie Aufrufe, Mobil/Desktop, Hotspot-Klicks und Verweildauer in Sekunden.
+
 Der alte Serverordner `/flipbook` ist nicht der offizielle Anzeigeweg. Neue Flipbook-Links sollen immer ueber `/smartviewer` laufen.
 
 Der Smartviewer nutzt standardmaessig die gleiche Domain, von der er geladen wurde. Fuer lokale Tests oder Staging kann optional `api_base` gesetzt werden:
@@ -142,6 +144,7 @@ Diese Dateien und Ordner gehoeren nicht in GitHub:
 - `state.json`
 - `urls.json`
 - `catalog-hotspots.json`
+- `catalog-analytics.json`
 
 JSON-Laufzeitdaten werden atomar geschrieben: Vor dem Ersetzen einer Datei wird eine Backup-Kopie unter `data-backups/` abgelegt. Das schuetzt vor halb geschriebenen JSON-Dateien bei Prozessabbruechen.
 
