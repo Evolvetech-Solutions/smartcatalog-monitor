@@ -217,9 +217,11 @@
 
     .hotspot {
       position: absolute;
-      --hotspot-transform: translateY(0);
+      box-sizing: border-box;
       min-width: 0;
       min-height: 0;
+      padding: 0;
+      appearance: none;
       border: var(--hotspot-border-width, 2px) solid var(--hotspot-border-color, rgba(37, 99, 235, 0.74));
       border-radius: 8px;
       background: var(--hotspot-fill, rgba(37, 99, 235, 0.10));
@@ -228,17 +230,7 @@
       box-shadow:
         inset 0 0 0 1px rgba(255, 255, 255, 0.62),
         0 10px 22px rgba(15, 23, 42, 0.10);
-      transform: var(--hotspot-transform);
-      transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
-    }
-
-    .hotspot.marker-hotspot {
-      --hotspot-transform: translate(-50%, -50%);
-      box-sizing: border-box;
-      width: var(--marker-hotspot-width, 46px);
-      height: var(--marker-hotspot-height, 38px);
-      min-width: var(--marker-hotspot-width, 46px);
-      min-height: var(--marker-hotspot-height, 38px);
+      transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
     }
 
     .hotspot::before {
@@ -328,7 +320,7 @@
       box-shadow:
         inset 0 0 0 1px rgba(255, 255, 255, 0.74),
         0 14px 30px rgba(37, 99, 235, 0.22);
-      transform: var(--hotspot-transform) translateY(-1px);
+      transform: none;
     }
 
     .hotspot:hover::before,
@@ -672,11 +664,6 @@
         background-size: 12px 12px;
       }
 
-      .hotspot.marker-hotspot {
-        --marker-hotspot-width: 42px;
-        --marker-hotspot-height: 34px;
-      }
-
     }
 
     @media (max-width: 520px) {
@@ -765,8 +752,6 @@
     const params = new URLSearchParams(window.location.search);
     const API_BASE = params.get("api_base") || window.location.origin;
     const catalogId = params.get("catalog");
-    const MARKER_HOTSPOT_MAX_DIMENSION = 0.14;
-    const MARKER_HOTSPOT_MAX_AREA = 0.012;
 
     const viewerEl = document.getElementById("viewer");
     const stageEl = document.getElementById("stage");
@@ -1056,17 +1041,6 @@
       return Math.max(0, Math.min(1, Number(value) || 0));
     }
 
-    function isMarkerHotspot(hotspot) {
-      const width = Number(hotspot?.position?.width) || 0;
-      const height = Number(hotspot?.position?.height) || 0;
-
-      return width > 0
-        && height > 0
-        && width <= MARKER_HOTSPOT_MAX_DIMENSION
-        && height <= MARKER_HOTSPOT_MAX_DIMENSION
-        && width * height <= MARKER_HOTSPOT_MAX_AREA;
-    }
-
     function applyHotspotGeometry(element, hotspot) {
       const position = hotspot?.position || {};
       const left = Number(position.left) || 0;
@@ -1074,16 +1048,6 @@
       const width = Math.max(0, Number(position.width) || 0);
       const height = Math.max(0, Number(position.height) || 0);
 
-      if (isMarkerHotspot(hotspot)) {
-        element.classList.add("marker-hotspot");
-        element.style.left = `${clampUnit(left + width / 2) * 100}%`;
-        element.style.top = `${clampUnit(top + height / 2) * 100}%`;
-        element.style.width = "";
-        element.style.height = "";
-        return;
-      }
-
-      element.classList.remove("marker-hotspot");
       element.style.left = `${clampUnit(left) * 100}%`;
       element.style.top = `${clampUnit(top) * 100}%`;
       element.style.width = `${clampUnit(width) * 100}%`;
