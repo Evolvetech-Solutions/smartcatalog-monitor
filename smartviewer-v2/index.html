@@ -1075,6 +1075,11 @@
         applyHotspotGeometry(button, hotspot);
         applyHotspotStyle(button, hotspot.style, hotspot.type);
         button.dataset.label = hotspotTitle;
+        ["pointerdown", "touchstart"].forEach((eventName) => {
+          button.addEventListener(eventName, () => {
+            state.suppressHotspotClickUntil = 0;
+          });
+        });
         button.addEventListener("pointerenter", () => showHotspotLabel(button, hotspotTitle));
         button.addEventListener("pointerleave", () => {
           if (!button.classList.contains("active")) hideHotspotLabel(button);
