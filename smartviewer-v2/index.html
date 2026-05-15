@@ -816,6 +816,7 @@
       lastTapX: 0,
       lastTapY: 0,
       suppressHotspotClickUntil: 0,
+      ignoreHotspotClickUntil: 0,
       analyticsEnabled: false,
       analyticsVisibleSince: 0,
       hotspotLabelTarget: null
@@ -1067,6 +1068,7 @@
       hotspots.forEach((hotspot) => {
         const hotspotTitle = hotspot.product?.name || hotspot.title || hotspot.label || "Klickbarer Bereich";
         const button = document.createElement("button");
+        let directTap = null;
         button.type = "button";
         button.className = `hotspot hotspot-type-${hotspot.type || "link"}`;
         button.classList.toggle("icon-hidden", hotspot.show_icon === false);
@@ -1075,10 +1077,32 @@
         applyHotspotGeometry(button, hotspot);
         applyHotspotStyle(button, hotspot.style, hotspot.type);
         button.dataset.label = hotspotTitle;
-        ["pointerdown", "touchstart"].forEach((eventName) => {
-          button.addEventListener(eventName, () => {
-            state.suppressHotspotClickUntil = 0;
-          });
+        button.addEventListener("pointerdown", (event) => {
+          if (event.pointerType === "mouse") return;
+          state.suppressHotspotClickUntil = 0;
+          directTap = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            startedAt: Date.now()
+          };
+        });
+        button.addEventListener("pointerup", (event) => {
+          if (event.pointerType === "mouse" || !directTap || directTap.pointerId !== event.pointerId) return;
+
+          const moved = Math.hypot(event.clientX - directTap.x, event.clientY - directTap.y) > 12;
+          const elapsed = Date.now() - directTap.startedAt;
+          directTap = null;
+
+          if (moved || elapsed > 700) return;
+
+          event.stopPropagation();
+          event.preventDefault();
+          state.ignoreHotspotClickUntil = Date.now() + 520;
+          activateHotspot(button, hotspot, hotspotTitle, { ignoreSwipeSuppression: true });
+        });
+        button.addEventListener("pointercancel", () => {
+          directTap = null;
         });
         button.addEventListener("pointerenter", () => showHotspotLabel(button, hotspotTitle));
         button.addEventListener("pointerleave", () => {
@@ -1096,21 +1120,28 @@
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           event.preventDefault();
-          if (Date.now() < state.suppressHotspotClickUntil) return;
-          document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
-            activeHotspot.classList.remove("active");
-          });
-          button.classList.add("active");
-          showHotspotLabel(button, hotspotTitle);
-          sendAnalyticsEvent("hotspot_click", {
-            hotspot_id: hotspot.id || "",
-            hotspot_type: hotspot.type || "unknown",
-            hotspot_title: hotspot.product?.name || hotspot.title || hotspot.label || ""
-          });
-          openHotspot(hotspot);
+          if (Date.now() < state.ignoreHotspotClickUntil) return;
+          activateHotspot(button, hotspot, hotspotTitle);
         });
         pageEl.appendChild(button);
       });
+    }
+
+    function activateHotspot(button, hotspot, hotspotTitle, options = {}) {
+      if (!options.ignoreSwipeSuppression && Date.now() < state.suppressHotspotClickUntil) return false;
+
+      document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
+        activeHotspot.classList.remove("active");
+      });
+      button.classList.add("active");
+      showHotspotLabel(button, hotspotTitle);
+      sendAnalyticsEvent("hotspot_click", {
+        hotspot_id: hotspot.id || "",
+        hotspot_type: hotspot.type || "unknown",
+        hotspot_title: hotspot.product?.name || hotspot.title || hotspot.label || ""
+      });
+      openHotspot(hotspot);
+      return true;
     }
 
     function hexToRgba(hex, opacity) {
@@ -1405,7 +1436,12 @@
     }
 
     function startGesture(event) {
-      if (event.pointerType === "mouse" && isHotspotTarget(event.target)) return;
+      if (isHotspotTarget(event.target)) {
+        state.suppressHotspotClickUntil = 0;
+        state.dragging = false;
+        state.moved = false;
+        return;
+      }
 
       state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       stageEl.setPointerCapture?.(event.pointerId);
