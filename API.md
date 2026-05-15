@@ -439,7 +439,8 @@ Antwort:
   "pages": [
     {
       "page": 1,
-      "image_url": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-1.jpg"
+      "image_url": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-1.jpg",
+      "image_url_highres": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-hi-1.jpg"
     }
   ],
   "hotspots": [

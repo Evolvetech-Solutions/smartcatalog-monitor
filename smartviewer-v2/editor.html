@@ -1656,6 +1656,24 @@
       };
     }
 
+    function pageImageUrl(page, quality = "auto") {
+      if (!page) return "";
+      if (quality === "high" && page.image_url_highres) return page.image_url_highres;
+      return page.image_url || page.image_url_highres || "";
+    }
+
+    function desiredEditorPageImageQuality() {
+      return state.zoom > 1.18 ? "high" : "standard";
+    }
+
+    function updateEditorPageImageQuality() {
+      const page = state.pages[state.currentPage - 1];
+      const nextSrc = pageImageUrl(page, desiredEditorPageImageQuality());
+      if (nextSrc && el.pageImage.src !== nextSrc) {
+        el.pageImage.src = nextSrc;
+      }
+    }
+
     function setEditorZoom(value, anchor = null) {
       const maxZoom = maxEditorZoom();
       const nextZoom = Math.max(1, Math.min(maxZoom, Number(value) || 1));
@@ -1667,6 +1685,7 @@
       const anchorY = anchor && wrapRect ? anchor.y - wrapRect.top + previousTop : null;
       state.zoom = nextZoom;
       el.pageCanvas.style.setProperty("--editor-hotspot-title-scale", String(nextZoom));
+      updateEditorPageImageQuality();
 
       if (isMobileEditor()) {
         const fitWidth = state.mobileFitWidth || updateMobileFitWidth();
@@ -1854,7 +1873,7 @@
       setMobileTab(state.mobileTab);
       setMobilePlacing(state.mobilePlacing);
       const page = state.pages[state.currentPage - 1];
-      el.pageImage.src = page?.image_url || "";
+      el.pageImage.src = pageImageUrl(page, desiredEditorPageImageQuality());
       el.pageImage.alt = `Seite ${state.currentPage}`;
       el.pageSelect.value = String(state.currentPage);
 
