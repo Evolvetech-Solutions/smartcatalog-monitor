@@ -196,7 +196,6 @@
       gap: 0;
       transform-origin: center center;
       will-change: transform;
-      filter: drop-shadow(var(--shadow));
     }
 
     .page {
@@ -204,6 +203,7 @@
       overflow: hidden;
       background: #fff;
       flex: 0 0 auto;
+      box-shadow: var(--shadow);
     }
 
     .page img {
@@ -278,10 +278,15 @@
       display: none;
     }
 
-    .hotspot-label {
+    #hotspotLabelOverlay {
       position: absolute;
-      left: 50%;
-      bottom: calc(100% + 9px);
+      inset: 0;
+      z-index: 12;
+      pointer-events: none;
+    }
+
+    #hotspotFloatingLabel {
+      position: absolute;
       max-width: min(220px, 80vw);
       padding: 7px 10px;
       border-radius: 8px;
@@ -296,21 +301,32 @@
       text-overflow: ellipsis;
       box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
       opacity: 0;
+      visibility: hidden;
       pointer-events: none;
-      transform: translate(-50%, 4px) scale(var(--hotspot-label-scale, 1));
-      transform-origin: 50% 100%;
-      transition: opacity 120ms ease, transform 120ms ease;
+      transform: none;
+      transition: opacity 120ms ease;
     }
 
-    .hotspot-label::after {
+    #hotspotFloatingLabel.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #hotspotFloatingLabel::after {
       content: "";
       position: absolute;
-      left: 50%;
+      left: var(--label-arrow-left, 50%);
       top: 100%;
       width: 10px;
       height: 10px;
       background: inherit;
       transform: translate(-50%, -5px) rotate(45deg);
+    }
+
+    #hotspotFloatingLabel[data-placement="below"]::after {
+      top: auto;
+      bottom: 100%;
+      transform: translate(-50%, 5px) rotate(45deg);
     }
 
     .hotspot:hover,
@@ -331,13 +347,6 @@
       transform: scale(1);
     }
 
-    .hotspot:hover .hotspot-label,
-    .hotspot:focus-visible .hotspot-label,
-    .hotspot.active .hotspot-label {
-      opacity: 1;
-      transform: translate(-50%, 0) scale(var(--hotspot-label-scale, 1));
-    }
-
     #viewer:not(.hotspots-visible) .hotspot {
       border-color: rgba(37, 99, 235, 0);
       background: rgba(37, 99, 235, 0);
@@ -346,7 +355,7 @@
 
     #viewer:not(.hotspots-visible) .hotspot::after,
     #viewer:not(.hotspots-visible) .hotspot::before,
-    #viewer:not(.hotspots-visible) .hotspot-label {
+    #viewer:not(.hotspots-visible) #hotspotFloatingLabel {
       opacity: 0;
     }
 
@@ -728,6 +737,9 @@
     <div id="stage">
       <div id="spread"></div>
     </div>
+    <div id="hotspotLabelOverlay">
+      <div id="hotspotFloatingLabel" role="status" aria-live="polite"></div>
+    </div>
 
     <div id="loading">
       <div id="loadingPanel">
@@ -774,6 +786,7 @@
     const drawerBodyEl = document.getElementById("drawerBody");
     const drawerActionsEl = document.getElementById("drawerActions");
     const drawerCloseBtn = document.getElementById("drawerCloseBtn");
+    const hotspotFloatingLabelEl = document.getElementById("hotspotFloatingLabel");
 
     const state = {
       catalog: null,
@@ -804,7 +817,8 @@
       lastTapY: 0,
       suppressHotspotClickUntil: 0,
       analyticsEnabled: false,
-      analyticsVisibleSince: 0
+      analyticsVisibleSince: 0,
+      hotspotLabelTarget: null
     };
 
     if (!catalogId) {
@@ -961,11 +975,66 @@
       state.panY = Math.max(-maxY, Math.min(maxY, state.panY));
     }
 
+    function clampValue(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function hideHotspotLabel(target = null) {
+      if (target && state.hotspotLabelTarget && state.hotspotLabelTarget !== target) return;
+      state.hotspotLabelTarget = null;
+      hotspotFloatingLabelEl.classList.remove("visible");
+      hotspotFloatingLabelEl.removeAttribute("data-placement");
+    }
+
+    function syncHotspotLabelPosition() {
+      const target = state.hotspotLabelTarget;
+      if (!target || !target.isConnected || !state.showHotspots) {
+        hideHotspotLabel();
+        return;
+      }
+
+      const viewerRect = viewerEl.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const labelRect = hotspotFloatingLabelEl.getBoundingClientRect();
+      const labelWidth = Math.min(labelRect.width || 0, Math.max(40, viewerRect.width - 16));
+      const labelHeight = labelRect.height || 0;
+      const rawCenter = targetRect.left + targetRect.width / 2 - viewerRect.left;
+      const maxLeft = Math.max(8, viewerRect.width - labelWidth - 8);
+      const maxTop = Math.max(8, viewerRect.height - labelHeight - 8);
+      const left = clampValue(rawCenter - labelWidth / 2, 8, maxLeft);
+      let top = targetRect.top - viewerRect.top - labelHeight - 10;
+      let placement = "above";
+
+      if (top < 8) {
+        top = targetRect.bottom - viewerRect.top + 10;
+        placement = "below";
+      }
+
+      top = clampValue(top, 8, maxTop);
+      const arrowLeft = clampValue(rawCenter - left, 14, Math.max(14, labelWidth - 14));
+
+      hotspotFloatingLabelEl.dataset.placement = placement;
+      hotspotFloatingLabelEl.style.left = `${Math.round(left)}px`;
+      hotspotFloatingLabelEl.style.top = `${Math.round(top)}px`;
+      hotspotFloatingLabelEl.style.setProperty("--label-arrow-left", `${Math.round(arrowLeft)}px`);
+    }
+
+    function showHotspotLabel(target, title) {
+      if (!target || !state.showHotspots) return;
+
+      state.hotspotLabelTarget = target;
+      hotspotFloatingLabelEl.innerText = title;
+      hotspotFloatingLabelEl.classList.add("visible");
+      hotspotFloatingLabelEl.style.visibility = "hidden";
+      syncHotspotLabelPosition();
+      hotspotFloatingLabelEl.style.visibility = "";
+    }
+
     function applyTransform() {
       clampPan();
-      spreadEl.style.setProperty("--hotspot-label-scale", String(1 / Math.max(1, state.scale || 1)));
       spreadEl.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
       updatePageImageQuality();
+      syncHotspotLabelPosition();
     }
 
     function resetZoom() {
@@ -1005,10 +1074,15 @@
         button.setAttribute("aria-label", hotspotTitle);
         applyHotspotGeometry(button, hotspot);
         applyHotspotStyle(button, hotspot.style, hotspot.type);
-        const label = document.createElement("span");
-        label.className = "hotspot-label";
-        label.innerText = hotspotTitle;
-        button.appendChild(label);
+        button.dataset.label = hotspotTitle;
+        button.addEventListener("pointerenter", () => showHotspotLabel(button, hotspotTitle));
+        button.addEventListener("pointerleave", () => {
+          if (!button.classList.contains("active")) hideHotspotLabel(button);
+        });
+        button.addEventListener("focus", () => showHotspotLabel(button, hotspotTitle));
+        button.addEventListener("blur", () => {
+          if (!button.classList.contains("active")) hideHotspotLabel(button);
+        });
         ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend"].forEach((eventName) => {
           button.addEventListener(eventName, (event) => {
             event.stopPropagation();
@@ -1022,6 +1096,7 @@
             activeHotspot.classList.remove("active");
           });
           button.classList.add("active");
+          showHotspotLabel(button, hotspotTitle);
           sendAnalyticsEvent("hotspot_click", {
             hotspot_id: hotspot.id || "",
             hotspot_type: hotspot.type || "unknown",
@@ -1125,6 +1200,7 @@
 
     function render() {
       const visible = visiblePageNumbers();
+      hideHotspotLabel();
       spreadEl.innerHTML = "";
       spreadEl.style.gap = isMobileLayout() ? "0px" : "1px";
 
@@ -1285,6 +1361,7 @@
     function closeDrawer() {
       drawerBackdropEl.classList.remove("open");
       drawerEl.classList.remove("open");
+      hideHotspotLabel();
       document.querySelectorAll(".hotspot.active").forEach((activeHotspot) => {
         activeHotspot.classList.remove("active");
       });
@@ -1505,6 +1582,7 @@
     document.getElementById("hotspotBtn").addEventListener("click", () => {
       state.showHotspots = !state.showHotspots;
       viewerEl.classList.toggle("hotspots-visible", state.showHotspots);
+      if (!state.showHotspots) hideHotspotLabel();
     });
     drawerCloseBtn.addEventListener("click", closeDrawer);
     drawerBackdropEl.addEventListener("click", closeDrawer);

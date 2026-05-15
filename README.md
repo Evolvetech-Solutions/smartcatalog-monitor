@@ -113,7 +113,7 @@ SmartViewer V2 laedt Katalogdaten, Seiten und Hotspots ueber:
 /api/smartviewer-v2/catalogs/:catalogId
 ```
 
-PDF-Seiten werden als Standard- und High-Res-JPGs erzeugt. Viewer und Editor laden beim Hineinzoomen automatisch `image_url_highres`, damit Detailansichten schaerfer bleiben. Fuer bestehende Upload-Kataloge erzeugt die API fehlende High-Res-Seiten beim naechsten Katalogabruf nach, sofern die PDF noch unter `/uploads` vorhanden ist.
+PDF-Seiten werden als Standard- und 420-DPI-High-Res-JPGs erzeugt. Viewer und Editor laden beim Hineinzoomen automatisch `image_url_highres`, damit Detailansichten schaerfer bleiben. Fuer bestehende Upload-Kataloge erzeugt die API fehlende oder veraltete High-Res-Seiten beim naechsten Katalogabruf nach, sofern die PDF noch unter `/uploads` vorhanden ist.
 
 Hotspots koennen fuer das Kundenportal ueber `GET/PUT /api/customer/catalogs/:id/hotspots` gepflegt werden. Positionen werden relativ zur Seite gespeichert (`left`, `top`, `width`, `height` jeweils 0 bis 1), damit sie auf Handy und Desktop gleich funktionieren.
 

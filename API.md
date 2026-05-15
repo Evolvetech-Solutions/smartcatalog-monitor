@@ -424,6 +424,8 @@ Oeffentliche Katalogdaten fuer den Viewer:
 GET /api/smartviewer-v2/catalogs/:catalogId
 ```
 
+`image_url_highres` verweist auf die 420-DPI-Seite fuer Zoom-Ansichten. Fehlende oder veraltete High-Res-Seiten werden bei Upload-Katalogen beim Abruf nachgeneriert, sofern die PDF noch unter `/uploads` vorhanden ist.
+
 Antwort:
 
 ```json
@@ -440,7 +442,7 @@ Antwort:
     {
       "page": 1,
       "image_url": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-1.jpg",
-      "image_url_highres": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-hi-1.jpg"
+      "image_url_highres": "https://api.evolvetech-solutions.de/catalog-pages/1777318518555/page-hi-1.jpg?v=dpi-420"
     }
   ],
   "hotspots": [

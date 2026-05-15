@@ -1684,7 +1684,7 @@
       const anchorX = anchor && wrapRect ? anchor.x - wrapRect.left + previousLeft : null;
       const anchorY = anchor && wrapRect ? anchor.y - wrapRect.top + previousTop : null;
       state.zoom = nextZoom;
-      el.pageCanvas.style.setProperty("--editor-hotspot-title-scale", String(nextZoom));
+      el.pageCanvas.style.setProperty("--editor-hotspot-title-scale", "1");
       updateEditorPageImageQuality();
 
       if (isMobileEditor()) {
