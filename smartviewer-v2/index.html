@@ -904,6 +904,28 @@
         : `Seite ${visible[0] || 1}`;
     }
 
+    function pageImageUrl(page, quality = "auto") {
+      if (!page) return "";
+      if (quality === "high" && page.image_url_highres) return page.image_url_highres;
+      return page.image_url || page.image_url_highres || "";
+    }
+
+    function desiredPageImageQuality() {
+      return state.scale > 1.18 ? "high" : "standard";
+    }
+
+    function updatePageImageQuality() {
+      const quality = desiredPageImageQuality();
+
+      spreadEl.querySelectorAll("img[data-page-number]").forEach((img) => {
+        const page = state.pages[Number(img.dataset.pageNumber) - 1];
+        const nextSrc = pageImageUrl(page, quality);
+        if (nextSrc && img.src !== nextSrc) {
+          img.src = nextSrc;
+        }
+      });
+    }
+
     function updateBranding() {
       const customer = state.catalog.customer || {};
       const title = state.catalog.title || "SmartCatalog";
@@ -943,6 +965,7 @@
       clampPan();
       spreadEl.style.setProperty("--hotspot-label-scale", String(1 / Math.max(1, state.scale || 1)));
       spreadEl.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+      updatePageImageQuality();
     }
 
     function resetZoom() {
@@ -1123,7 +1146,8 @@
         pageEl.style.height = `${pageSize.height}px`;
 
         const img = document.createElement("img");
-        img.src = page.image_url;
+        img.src = pageImageUrl(page, desiredPageImageQuality());
+        img.dataset.pageNumber = String(pageNumber);
         img.alt = `Seite ${pageNumber}`;
         pageEl.appendChild(img);
         renderHotspots(pageEl, pageNumber);
@@ -1434,7 +1458,7 @@
           resolve(page);
         };
         img.onerror = () => resolve(page);
-        img.src = page.image_url;
+        img.src = pageImageUrl(page, "standard");
       });
     }
 

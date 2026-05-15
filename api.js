@@ -46,6 +46,8 @@ const CATALOG_ANALYTICS_FILE = "./catalog-analytics.json";
 const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
 const PRODUCT_IMAGE_DIR = path.join(CUSTOMER_ASSETS_DIR, "products");
+const CATALOG_PAGE_DPI = 140;
+const CATALOG_PAGE_HIGHRES_DPI = 280;
 const MAX_PRODUCT_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_PRODUCT_IMAGES_PER_HOTSPOT = 3;
 const execFileAsync = promisify(execFile);
@@ -346,34 +348,98 @@ function getUploadPathFromPdfUrl(pdfUrl) {
   return fileName ? path.join("./uploads", fileName) : "";
 }
 
-async function generateCatalogPages(pdfPath, catalogId) {
-  const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
-  await fs.mkdir(outputDir, { recursive: true });
-
-  const outputPrefix = `${outputDir}/page`;
-
+async function renderPdfPages(pdfPath, outputPrefix, dpi) {
   await execFileAsync("pdftoppm", [
     "-jpeg",
     "-r",
-    "140",
+    String(dpi),
     pdfPath,
     outputPrefix
   ]);
+}
 
-  const files = await fs.readdir(outputDir);
+function parseCatalogPageFile(file) {
+  const standard = file.match(/^page-(\d+)\.jpg$/i);
+  if (standard) {
+    return {
+      page: Number(standard[1]),
+      quality: "standard"
+    };
+  }
 
-  const pages = files
-    .filter((file) => file.endsWith(".jpg"))
-    .sort((a, b) => {
-      const numA = Number(a.match(/\d+/)?.[0] || 0);
-      const numB = Number(b.match(/\d+/)?.[0] || 0);
-      return numA - numB;
-    })
-    .map((file) => `${BASE_URL}/catalog-pages/${catalogId}/${file}`);
+  const highres = file.match(/^page-hi-(\d+)\.jpg$/i);
+  if (highres) {
+    return {
+      page: Number(highres[1]),
+      quality: "highres"
+    };
+  }
+
+  return null;
+}
+
+function buildCatalogPageEntries(catalogId, files) {
+  const pagesByNumber = new Map();
+
+  files.forEach((file) => {
+    const parsed = parseCatalogPageFile(file);
+    if (!parsed || !parsed.page) return;
+
+    const entry = pagesByNumber.get(parsed.page) || {
+      page: parsed.page,
+      image_url: "",
+      image_url_highres: ""
+    };
+
+    const url = `${BASE_URL}/catalog-pages/${catalogId}/${file}`;
+    if (parsed.quality === "standard") {
+      entry.image_url = url;
+    } else {
+      entry.image_url_highres = url;
+    }
+
+    pagesByNumber.set(parsed.page, entry);
+  });
+
+  return Array.from(pagesByNumber.values())
+    .sort((a, b) => a.page - b.page)
+    .map((entry) => ({
+      ...entry,
+      image_url: entry.image_url || entry.image_url_highres,
+      image_url_highres: entry.image_url_highres || entry.image_url
+    }));
+}
+
+async function readCatalogPageEntries(catalogId) {
+  const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
+  const files = await fs.readdir(outputDir).catch(() => []);
+
+  return buildCatalogPageEntries(
+    catalogId,
+    files.filter((file) => file.toLowerCase().endsWith(".jpg"))
+  );
+}
+
+async function generateHighResCatalogPages(pdfPath, catalogId) {
+  const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
+  await fs.mkdir(outputDir, { recursive: true });
+
+  await renderPdfPages(pdfPath, `${outputDir}/page-hi`, CATALOG_PAGE_HIGHRES_DPI);
+}
+
+async function generateCatalogPages(pdfPath, catalogId) {
+  const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
+  await fs.rm(outputDir, { recursive: true, force: true });
+  await fs.mkdir(outputDir, { recursive: true });
+
+  await renderPdfPages(pdfPath, `${outputDir}/page`, CATALOG_PAGE_DPI);
+  await generateHighResCatalogPages(pdfPath, catalogId);
+
+  const pages = await readCatalogPageEntries(catalogId);
 
   return {
     catalog_id: String(catalogId),
-    pages
+    pages: pages.map((page) => page.image_url)
   };
 }
 
@@ -777,21 +843,30 @@ function buildCatalogAnalyticsReport(analytics, catalog, days) {
   };
 }
 
-async function getCatalogPages(catalogId) {
-  const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
-  const files = await fs.readdir(outputDir).catch(() => []);
+async function getCatalogPages(catalogId, pdfUrl = "") {
+  let pages = await readCatalogPageEntries(catalogId);
+  const missingHighRes = pages.length > 0 && pages.some((page) => page.image_url_highres === page.image_url);
+  const pdfPath = getUploadPathFromPdfUrl(pdfUrl);
 
-  return files
-    .filter((file) => file.toLowerCase().endsWith(".jpg"))
-    .sort((a, b) => {
-      const numA = Number(a.match(/\d+/)?.[0] || 0);
-      const numB = Number(b.match(/\d+/)?.[0] || 0);
-      return numA - numB;
-    })
-    .map((file, index) => ({
-      page: index + 1,
-      image_url: `${BASE_URL}/catalog-pages/${catalogId}/${file}`
-    }));
+  if ((!pages.length || missingHighRes) && pdfPath) {
+    try {
+      await fs.access(pdfPath);
+
+      if (!pages.length) {
+        await generateCatalogPages(pdfPath, catalogId);
+      } else if (missingHighRes) {
+        await generateHighResCatalogPages(pdfPath, catalogId);
+      }
+
+      pages = await readCatalogPageEntries(catalogId);
+    } catch (error) {
+      console.warn(
+        `High-Res-Smartviewer-Seiten konnten nicht erzeugt werden: ${error.message}`
+      );
+    }
+  }
+
+  return pages;
 }
 
 async function findCustomerCatalogById(customerNumber, id) {
@@ -1523,7 +1598,7 @@ app.get("/api/smartviewer-v2/catalogs/:catalogId", async (req, res) => {
     (entry) => entry.customer_number === catalog.customer_number
   );
   const planConfig = getPlanConfig(customer?.plan);
-  const pages = await getCatalogPages(catalogId);
+  const pages = await getCatalogPages(catalogId, catalog.pdf_url || "");
   const hotspots = await readCatalogHotspots(catalogId);
 
   res.json({
