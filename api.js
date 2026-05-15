@@ -47,7 +47,9 @@ const CATALOG_PAGES_DIR = "./catalog-pages";
 const CUSTOMER_ASSETS_DIR = "./customer-assets";
 const PRODUCT_IMAGE_DIR = path.join(CUSTOMER_ASSETS_DIR, "products");
 const CATALOG_PAGE_DPI = 140;
-const CATALOG_PAGE_HIGHRES_DPI = 280;
+const CATALOG_PAGE_HIGHRES_DPI = 420;
+const CATALOG_PAGE_HIGHRES_VERSION = `dpi-${CATALOG_PAGE_HIGHRES_DPI}`;
+const CATALOG_PAGE_HIGHRES_VERSION_FILE = "page-hi-version.txt";
 const MAX_PRODUCT_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_PRODUCT_IMAGES_PER_HOTSPOT = 3;
 const execFileAsync = promisify(execFile);
@@ -395,7 +397,7 @@ function buildCatalogPageEntries(catalogId, files) {
     if (parsed.quality === "standard") {
       entry.image_url = url;
     } else {
-      entry.image_url_highres = url;
+      entry.image_url_highres = `${url}?v=${encodeURIComponent(CATALOG_PAGE_HIGHRES_VERSION)}`;
     }
 
     pagesByNumber.set(parsed.page, entry);
@@ -420,11 +422,44 @@ async function readCatalogPageEntries(catalogId) {
   );
 }
 
+function highResVersionPath(catalogId) {
+  return path.join(CATALOG_PAGES_DIR, String(catalogId), CATALOG_PAGE_HIGHRES_VERSION_FILE);
+}
+
+async function readHighResCatalogPageVersion(catalogId) {
+  return fs.readFile(highResVersionPath(catalogId), "utf8")
+    .then((value) => value.trim())
+    .catch(() => "");
+}
+
+async function writeHighResCatalogPageVersion(catalogId) {
+  await fs.writeFile(highResVersionPath(catalogId), CATALOG_PAGE_HIGHRES_VERSION, "utf8");
+}
+
+async function hasCurrentHighResCatalogPages(catalogId, pages) {
+  if (!pages.length) return false;
+
+  const hasHighResPages = pages.every((page) =>
+    page.image_url_highres && page.image_url_highres !== page.image_url
+  );
+  if (!hasHighResPages) return false;
+
+  return (await readHighResCatalogPageVersion(catalogId)) === CATALOG_PAGE_HIGHRES_VERSION;
+}
+
 async function generateHighResCatalogPages(pdfPath, catalogId) {
   const outputDir = `${CATALOG_PAGES_DIR}/${catalogId}`;
   await fs.mkdir(outputDir, { recursive: true });
 
+  const existingFiles = await fs.readdir(outputDir).catch(() => []);
+  await Promise.all(
+    existingFiles
+      .filter((file) => /^page-hi-\d+\.jpg$/i.test(file))
+      .map((file) => fs.rm(path.join(outputDir, file), { force: true }))
+  );
+
   await renderPdfPages(pdfPath, `${outputDir}/page-hi`, CATALOG_PAGE_HIGHRES_DPI);
+  await writeHighResCatalogPageVersion(catalogId);
 }
 
 async function generateCatalogPages(pdfPath, catalogId) {
@@ -845,16 +880,16 @@ function buildCatalogAnalyticsReport(analytics, catalog, days) {
 
 async function getCatalogPages(catalogId, pdfUrl = "") {
   let pages = await readCatalogPageEntries(catalogId);
-  const missingHighRes = pages.length > 0 && pages.some((page) => page.image_url_highres === page.image_url);
+  const highResCurrent = await hasCurrentHighResCatalogPages(catalogId, pages);
   const pdfPath = getUploadPathFromPdfUrl(pdfUrl);
 
-  if ((!pages.length || missingHighRes) && pdfPath) {
+  if ((!pages.length || !highResCurrent) && pdfPath) {
     try {
       await fs.access(pdfPath);
 
       if (!pages.length) {
         await generateCatalogPages(pdfPath, catalogId);
-      } else if (missingHighRes) {
+      } else if (!highResCurrent) {
         await generateHighResCatalogPages(pdfPath, catalogId);
       }
 
